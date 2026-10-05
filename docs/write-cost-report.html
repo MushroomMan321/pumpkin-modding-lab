@@ -1,0 +1,317 @@
+<title>Pumpkin Plugin Write Cost</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<style>
+/* Layout: one reading column (~68ch) for prose; tables, chart and code may run wider inside their own scroll boxes. */
+:root {
+  --bg: #fbfaf8;
+  --surface: #f2efea;
+  --fg: #1f1d1a;
+  --muted: #5f5a52;
+  --line: #ddd7ce;
+  --accent: #b8530f;      /* pumpkin */
+  --per-write: #b8530f;   /* one host call per write */
+  --bulk: #23707a;        /* one host call per tick */
+  --neo: #6b6f7a;         /* NeoForge reference */
+  --budget: #a33a3a;
+  --code-bg: #f2efea;
+  --display: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+  --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #161513; --surface: #201e1b; --fg: #ece8e1; --muted: #a59e93; --line: #36322d;
+    --accent: #f0904a; --per-write: #f0904a; --bulk: #5cc0c9; --neo: #a3a8b3; --budget: #ef7d7d;
+    --code-bg: #1e1c19; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #161513; --surface: #201e1b; --fg: #ece8e1; --muted: #a59e93; --line: #36322d;
+  --accent: #f0904a; --per-write: #f0904a; --bulk: #5cc0c9; --neo: #a3a8b3; --budget: #ef7d7d;
+  --code-bg: #1e1c19; color-scheme: dark;
+}
+
+body { background: var(--bg); color: var(--fg); font: 16px/1.6 var(--body); }
+.page { max-width: 1040px; margin: 0 auto; padding-inline: 20px; padding-block: 40px 72px; }
+.prose { max-width: 68ch; }
+h1, h2, h3 { font-family: var(--display); line-height: 1.15; text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(2rem, 4.6vw, 2.9rem); font-weight: 600; letter-spacing: -0.01em; }
+h2 { font-size: 1.55rem; font-weight: 600; margin-top: 56px; padding-top: 18px; border-top: 1px solid var(--line); }
+h3 { font-size: 1.15rem; font-weight: 600; margin-top: 28px; }
+p, ul, ol { margin: 12px 0 0; }
+li + li { margin-top: 6px; }
+a { color: var(--accent); text-underline-offset: 2px; }
+a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+code { font: 0.88em var(--mono); background: var(--code-bg); padding: 1px 5px; border-radius: 3px; }
+.eyebrow { font: 500 0.78rem var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
+.dek { font-size: 1.15rem; color: var(--muted); margin-top: 14px; max-width: 62ch; }
+.meta { font: 0.82rem var(--mono); color: var(--muted); margin-top: 18px; display: flex; flex-wrap: wrap; gap: 6px 18px; }
+
+.findings { list-style: none; padding: 0; margin-top: 28px; display: grid; gap: 14px; max-width: 74ch; }
+.findings li { margin: 0; padding-left: 18px; border-left: 3px solid var(--line); }
+.findings li.key { border-left-color: var(--accent); }
+.findings b { font-weight: 600; }
+
+.figure { margin-top: 24px; }
+.figure figcaption { font-size: 0.9rem; color: var(--muted); margin-top: 8px; max-width: 74ch; }
+.chart-box { overflow-x: auto; }
+.chart { display: block; width: 100%; min-width: 520px; max-width: 760px; height: auto; }
+.chart .axis { stroke: var(--line); stroke-width: 1; }
+.chart .grid { stroke: var(--line); stroke-width: 1; stroke-dasharray: 2 4; }
+.chart .tick, .chart .label { fill: var(--muted); font: 12px var(--mono); }
+.chart .cat { fill: var(--fg); font: 500 13px var(--body); }
+.chart .value { fill: var(--fg); font: 500 12px var(--mono); }
+.chart .per-write { fill: var(--per-write); }
+.chart .bulk { fill: var(--bulk); }
+.chart .budget { stroke: var(--budget); stroke-width: 1.5; stroke-dasharray: 6 4; }
+.chart .budget-label { fill: var(--budget); font: 500 12px var(--mono); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 20px; font-size: 0.88rem; margin-top: 10px; }
+.legend span::before { content: ""; display: inline-block; width: 10px; height: 10px; margin-right: 7px; border-radius: 2px; vertical-align: -1px; }
+.legend .lw::before { background: var(--per-write); }
+.legend .lb::before { background: var(--bulk); }
+
+.table-box { overflow-x: auto; margin-top: 16px; }
+table { border-collapse: collapse; width: 100%; min-width: 620px; font-size: 0.92rem; }
+th, td { padding: 8px 12px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; white-space: normal; }
+thead th { font: 500 0.78rem var(--mono); letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); border-bottom: 2px solid var(--line); }
+td { font-variant-numeric: tabular-nums; font-family: var(--mono); font-size: 0.88rem; }
+td:first-child { font-family: var(--body); font-size: 0.92rem; }
+tr.hl td { background: var(--surface); }
+td.over { color: var(--budget); font-weight: 500; }
+.server { display: block; font-size: 0.78rem; color: var(--muted); }
+.note { font-size: 0.86rem; color: var(--muted); margin-top: 8px; max-width: 74ch; }
+
+pre { margin: 16px 0 0; background: var(--code-bg); border: 1px solid var(--line); border-radius: 6px; padding: 14px 16px; overflow-x: auto; font: 0.82rem/1.55 var(--mono); }
+pre .add { color: var(--bulk); }
+pre .hunk { color: var(--muted); }
+details { margin-top: 16px; }
+summary { cursor: pointer; font-weight: 500; }
+
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px 28px; margin-top: 16px; }
+.cols > div { min-width: 0; }
+.cols h3 { margin-top: 0; }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+</style>
+
+<div class="page">
+  <header class="prose">
+    <div class="eyebrow">pumpkin-server-bench · results, 5 Oct 2026</div>
+    <h1>What a world write costs a Pumpkin plugin</h1>
+    <p class="dek">A ticking-machine workload measured on Pumpkin and on NeoForge, a breakdown of where Pumpkin's tick time goes, and a prototype batched write that removes most of it.</p>
+    <div class="meta">
+      <span>Pumpkin master 2c7931a</span><span>NeoForge 26.3.0.51-beta</span><span>Minecraft 26.3</span><span>DGX Spark GB10</span>
+    </div>
+  </header>
+
+  <ul class="findings">
+    <li class="key">Each world write from a WASM plugin costs about <b>0.33 ms</b> of tick time. One hundred writes per tick take a tick from 1.2 ms to 34 ms, and its p99 past the 50 ms budget.</li>
+    <li>The cost follows the number of host calls, not the amount of plugin work. Growing the grid from 1 to 10,000 machines changes nothing; adding writes adds a fixed amount per write.</li>
+    <li class="key">A batched <code>set-block-states</code> call (31-line prototype) brings 100 writes per tick from <b>30.6 ms to 2.2 ms</b>, about 6 µs per write. Each write is the same <code>World::set_block_state</code> call as before.</li>
+    <li>About 1.2 ms per tick remains for calling the plugin at all. With bulk writes Pumpkin is within 1.5× of NeoForge running real block entities, using 183 MB of memory against 3.7 GB.</li>
+  </ul>
+
+  <section class="figure">
+    <div class="chart-box">
+      <svg class="chart" viewBox="0 0 640 300" role="img" aria-label="Mean tick time on the same Pumpkin binary. 10 writes per tick: 6.55 ms with one call per write, 1.84 ms with one call per tick. 100 writes per tick: 35.71 ms with one call per write, 2.37 ms with one call per tick. The tick budget is 50 ms.">
+        <line class="grid" x1="70" x2="610" y1="213.3" y2="213.3"/>
+        <line class="grid" x1="70" x2="610" y1="176.7" y2="176.7"/>
+        <line class="grid" x1="70" x2="610" y1="140" y2="140"/>
+        <line class="grid" x1="70" x2="610" y1="103.3" y2="103.3"/>
+        <line class="grid" x1="70" x2="610" y1="30" y2="30"/>
+        <text class="tick" x="60" y="254" text-anchor="end">0</text>
+        <text class="tick" x="60" y="217.3" text-anchor="end">10</text>
+        <text class="tick" x="60" y="180.7" text-anchor="end">20</text>
+        <text class="tick" x="60" y="144" text-anchor="end">30</text>
+        <text class="tick" x="60" y="107.3" text-anchor="end">40</text>
+        <text class="tick" x="60" y="70.7" text-anchor="end">50</text>
+        <text class="tick" x="60" y="34" text-anchor="end">60</text>
+        <text class="label" x="16" y="140" transform="rotate(-90 16 140)" text-anchor="middle">mean tick time (ms)</text>
+
+        <line class="budget" x1="70" x2="610" y1="66.7" y2="66.7"/>
+        <text class="budget-label" x="606" y="60" text-anchor="end">50 ms tick budget (20 TPS)</text>
+
+        <!-- 10 writes per tick -->
+        <rect class="per-write" x="140" y="226.0" width="70" height="24.0"/>
+        <text class="value" x="175" y="220" text-anchor="middle">6.55</text>
+        <rect class="bulk" x="230" y="243.25" width="70" height="6.75"/>
+        <text class="value" x="265" y="237" text-anchor="middle">1.84</text>
+        <!-- 100 writes per tick -->
+        <rect class="per-write" x="380" y="119.1" width="70" height="130.9"/>
+        <text class="value" x="415" y="113" text-anchor="middle">35.71</text>
+        <rect class="bulk" x="470" y="241.3" width="70" height="8.7"/>
+        <text class="value" x="505" y="235" text-anchor="middle">2.37</text>
+
+        <line class="axis" x1="70" x2="610" y1="250" y2="250"/>
+        <text class="cat" x="220" y="274" text-anchor="middle">10 writes per tick</text>
+        <text class="cat" x="460" y="274" text-anchor="middle">100 writes per tick</text>
+      </svg>
+    </div>
+    <div class="legend"><span class="lw">one host call per write (<code>wasm-batched</code>)</span><span class="lb">one host call per tick (<code>bulk</code>)</span></div>
+    <figcaption>Same patched Pumpkin binary for both variants, 1,000 machines, 600 measured ticks after 200 warm-up ticks. With no writes at all the tick takes 1.2 ms.</figcaption>
+  </section>
+
+  <h2 id="setup">Setup</h2>
+  <div class="prose">
+    <p>Every variant runs the same workload, <code>energy-grid</code>: a square grid of <i>n</i> machines that tick every server tick, pass energy to their four neighbours (integer maths, double-buffered so order does not matter), and rewrite a display block above a fixed share of the machines, alternating white and lime wool so every write changes the world. Writes use full updates (neighbours and listeners) on both servers.</p>
+    <p>A run counts only if the server reproduces the reference checksum: the energy of every machine after the run, weighted by its index, must match a reference implementation bit for bit. All 18 runs below did. A variant cannot look fast by doing less work.</p>
+    <ul>
+      <li><b>Tick time.</b> Pumpkin: <code>duration_nanos</code> from its own <code>ServerTickEndEvent</code>, which starts before <code>ServerTickStartEvent</code> handlers (where the plugin does its work) and ends after the world tick. NeoForge: first <code>ServerTickEvent.Pre</code> listener to last <code>ServerTickEvent.Post</code> listener. Only the measured ticks are recorded.</li>
+      <li><b>CPU per tick</b> is the whole process's user and system time from <code>/proc</code>, so work on other threads counts.</li>
+      <li><b>Hardware.</b> DGX Spark (GB10). The server is pinned to the ten Cortex-X925 cores, nothing else runs on them, and a fresh world is generated for every run with the grid's chunks force-loaded. No client is connected.</li>
+      <li><b>Software.</b> Pumpkin <code>2c7931a</code> built with its own release profile (fat LTO), Rust 1.99. NeoForge 26.3.0.51-beta on Java 25.0.4.1, 6 GB heap.</li>
+    </ul>
+  </div>
+
+  <h2 id="comparison">NeoForge and Pumpkin at 10,000 machines</h2>
+  <p class="prose">10,000 machines, 100 writes per tick, 2,400 measured ticks after 1,200 warm-up ticks.</p>
+  <div class="table-box">
+    <table>
+      <thead><tr><th>Variant</th><th>Mean</th><th>Median</th><th>p99</th><th>CPU / tick</th><th>Memory</th></tr></thead>
+      <tbody>
+        <tr><td>Block entity per machine<span class="server">NeoForge</span></td><td>1.48 ms</td><td>1.42 ms</td><td>2.84 ms</td><td>2.46 ms</td><td>3,700 MB</td></tr>
+        <tr><td>One loop over all machines<span class="server">NeoForge</span></td><td>0.63 ms</td><td>0.60 ms</td><td>1.02 ms</td><td>1.51 ms</td><td>3,302 MB</td></tr>
+        <tr><td>WASM plugin, one host call per write<span class="server">Pumpkin, unmodified</span></td><td>36.03 ms</td><td>36.74 ms</td><td class="over">55.82 ms</td><td>12.34 ms</td><td>183 MB</td></tr>
+        <tr><td>WASM plugin, one host call per write<span class="server">Pumpkin, with bulk-write patch</span></td><td>30.59 ms</td><td>33.26 ms</td><td class="over">54.48 ms</td><td>10.77 ms</td><td>183 MB</td></tr>
+        <tr class="hl"><td>WASM plugin, one host call per tick<span class="server">Pumpkin, with bulk-write patch</span></td><td>2.21 ms</td><td>2.08 ms</td><td>3.66 ms</td><td>1.17 ms</td><td>184 MB</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note">Red: over the 50 ms budget. NeoForge's CPU time exceeds its tick time because the JIT compiler and garbage collector run on other threads.</p>
+
+  <h2 id="breakdown">Where Pumpkin's tick time goes</h2>
+  <p class="prose">One variable at a time, unmodified Pumpkin, 600 measured ticks after 200 warm-up ticks (the last row is the full-length run above).</p>
+  <div class="table-box">
+    <table>
+      <thead><tr><th>Machines</th><th>Writes per tick</th><th>Mean</th><th>p99</th><th>CPU / tick</th><th>CPU ÷ tick time</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>0</td><td>1.76 ms</td><td>2.67 ms</td><td>0.77 ms</td><td>0.44</td></tr>
+        <tr><td>1,000</td><td>0</td><td>1.21 ms</td><td>2.57 ms</td><td>0.67 ms</td><td>0.55</td></tr>
+        <tr><td>10,000</td><td>0</td><td>1.16 ms</td><td>2.08 ms</td><td>0.70 ms</td><td>0.60</td></tr>
+        <tr><td>1,000</td><td>10</td><td>5.56 ms</td><td>9.60 ms</td><td>1.98 ms</td><td>0.36</td></tr>
+        <tr><td>1,000</td><td>50</td><td>14.70 ms</td><td>31.41 ms</td><td>5.30 ms</td><td>0.36</td></tr>
+        <tr><td>1,000</td><td>100</td><td>34.02 ms</td><td>48.75 ms</td><td>11.77 ms</td><td>0.35</td></tr>
+        <tr><td>10,000</td><td>100</td><td>36.03 ms</td><td class="over">55.82 ms</td><td>12.34 ms</td><td>0.34</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="prose">
+    <p>Plugin compute is negligible: the grid step for 10,000 machines costs nothing measurable over 1 machine. The fixed floor of about 1.2 ms is the tick event reaching the plugin plus one <code>get-world-by-name</code> call. Each write then adds about 0.33 ms ((34.02 − 1.21) ÷ 100), and the process is busy for only about a third of that time. The tick thread is mostly waiting.</p>
+    <p>That matches how host calls are made. A world-touching import goes through <code>pump_blocking</code> in <code>pumpkin-plugin-runtime/src/executor.rs</code>, which hands the operation to the blocking thread pool and waits for it while keeping the plugin's store free to serve re-entrant callbacks:</p>
+  </div>
+<pre>let (result, receiver) = oneshot::channel();
+self.shared.spawner.spawn_blocking(Box::new(move || {
+    let output = catch_unwind(AssertUnwindSafe(|| sync_scope(context, operation)))
+        .map_err(|payload| panic_message(payload.as_ref()));
+    let _ = result.send(output);
+}))?;
+self.pump_reentry_with_context(store, context, receiver).await?</pre>
+  <p class="prose">So every write is one cross-thread round trip, and a sleeping worker has to wake up for each one. This design is deliberate (see <a href="#design">design fit</a>); the cost is paid per call.</p>
+
+  <h2 id="prototype">The batched-write prototype</h2>
+  <div class="prose">
+    <p>One new method on <code>world</code>: <code>set-block-states(changes: list&lt;tuple&lt;block-pos, u16&gt;&gt;, update-flags)</code>. The host validates the states, then applies every write inside a single <code>pump_blocking</code> job, calling the same <code>World::set_block_state</code> a single write uses. The <code>bulk</code> plugin is the one-call-per-write plugin with one change: it collects the tick's writes, releases its own lock, and sends them in one call.</p>
+  </div>
+  <div class="table-box">
+    <table>
+      <thead><tr><th>Same patched binary, 1,000 machines</th><th>One call per write</th><th>One call per tick</th><th>Speed-up</th></tr></thead>
+      <tbody>
+        <tr><td>10 writes per tick, mean</td><td>6.55 ms</td><td>1.84 ms</td><td>3.6×</td></tr>
+        <tr><td>100 writes per tick, mean</td><td>35.71 ms</td><td>2.37 ms</td><td>15.1×</td></tr>
+        <tr><td>100 writes per tick, p99</td><td class="over">54.48 ms</td><td>3.86 ms</td><td>14.1×</td></tr>
+        <tr><td>100 writes per tick, CPU / tick</td><td>12.60 ms</td><td>1.17 ms</td><td>10.8×</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="prose">Going from 10 to 100 batched writes adds 0.53 ms, about 6 µs per write: the real cost of setting a block and updating its neighbours. The rest of the 0.33 ms per write was the round trip.</p>
+  <details>
+    <summary>The patch (3 files, 31 lines, on Pumpkin 2c7931a)</summary>
+<pre><span class="hunk">--- a/crates/pumpkin-plugin-wit/v0.1/world.wit</span>
+         set-block-state: func(pos: block-pos, state: u16, update-flags: block-flags);
+<span class="add">+        /// Sets many block states in one call, applied in order. One host round trip for
++        /// the whole list; events fire per write exactly as with set-block-state.
++        set-block-states: func(changes: list&lt;tuple&lt;block-pos, u16&gt;&gt;, update-flags: block-flags);</span>
+
+<span class="hunk">--- a/crates/pumpkin-wasm-host-v0_1/src/bindings.rs</span>
+         "pumpkin:plugin/world@0.1.0.[method]world.set-block-state": async | store | trappable,
+<span class="add">+        "pumpkin:plugin/world@0.1.0.[method]world.set-block-states": async | store | trappable,</span>
+
+<span class="hunk">--- a/crates/pumpkin-wasm-host-v0_1/src/world.rs  (impl HostWorldWithStore)</span>
+<span class="add">+    async fn set_block_states(
++        mut host: Access&lt;'_, PluginHostState, Self&gt;,
++        world: Resource&lt;World&gt;,
++        changes: Vec&lt;(WitBlockPos, u16)&gt;,
++        update_flags: WitBlockFlags,
++    ) -&gt; wasmtime::Result&lt;()&gt; {
++        let mut writes = Vec::with_capacity(changes.len());
++        for (pos, state) in changes {
++            let Some(state_id) = BlockStateId::new(state) else {
++                return Err(wasmtime::Error::msg("Invalid BlockStateId"));
++            };
++            writes.push((BlockPos::new(pos.x, pos.y, pos.z), state_id));
++        }
++        let internal_flags = from_wit_block_flags(update_flags);
++        let (world, plugin) = world_and_plugin(host.get(), &amp;world)?;
++
++        plugin
++            .store
++            .pump_blocking(&amp;mut host, move || {
++                for (pos, state_id) in &amp;writes {
++                    world.set_block_state(pos, *state_id, internal_flags);
++                }
++            })
++            .await
++    }</span></pre>
+  </details>
+
+  <h2 id="design">Design fit, and what an upstream version needs</h2>
+  <div class="cols">
+    <div>
+      <h3>What it keeps</h3>
+      <ul>
+        <li>Re-entry: all writes run inside one <code>pump_blocking</code> job, so events a write fires can still call back into the plugin.</li>
+        <li>The event contract: each write is the same <code>World::set_block_state</code> call, so events fire where and as they do today.</li>
+        <li>Permissions: block writes are not permission-gated, so batching routes around nothing.</li>
+        <li>The WIT guidance on boundary traffic: it removes crossings, the same goal behind chainable methods in <code>pumpkin-plugin-wit/AGENTS.md</code>.</li>
+      </ul>
+    </div>
+    <div>
+      <h3>What the prototype does not do</h3>
+      <ul>
+        <li>It adds to the published v0.1 WIT. Upstream it belongs in v0.2, as an <code>async func</code> like <code>set-block-state</code> in #3713.</li>
+        <li>It changes only the WIT and the v0.1 host, and skips <code>pumpkin-codegen -- wit</code>.</li>
+        <li>No size cap: a huge list is allocated host-side, outside the plugin's memory limit.</li>
+        <li>Semantics need writing down: writes apply in order, a batch is not atomic, and the plugin cannot observe the world between writes in one batch.</li>
+      </ul>
+    </div>
+  </div>
+  <p class="prose">A cheaper round trip would help every host call, not only writes: a dedicated worker instead of the general blocking pool, or running calls that cannot fire events inline. Batching and a cheaper round trip are complementary.</p>
+
+  <h3>Making the fast path the easy one</h3>
+  <div class="prose">
+    <p>Batching a mod's own logic (one network or controller ticking many blocks, as Mekanism and AE2 do) is the mod's job on any platform, and on Pumpkin it comes naturally because plugin state already lives in the plugin. Batching host calls is different: a mod cannot batch calls the API does not let it batch. Mods ported from Java will also bring Java's habit of calling into the world whenever convenient, which is free on NeoForge and costs about 0.33 ms per call here.</p>
+    <p>Three things would make the efficient path the default:</p>
+    <ul>
+      <li><b>Bulk host calls</b> in v0.2 (writes here, reads in #3719).</li>
+      <li><b>An opt-in write buffer in <code>pumpkin-plugin-api</code></b> that collects writes during a handler and flushes them in one call when it returns. A ported mod gets batching without restructuring; the trade-off is that buffered writes are not visible to reads in the same handler until the flush, which is why it should be opt-in.</li>
+      <li><b>A note in the plugin docs</b> that world calls cross a thread boundary: cache handles such as the world, skip writes that change nothing, and batch the rest.</li>
+    </ul>
+  </div>
+
+  <h2 id="neoforge">Why NeoForge mods don't batch writes</h2>
+  <div class="prose">
+    <p>A NeoForge mod is Java code loaded into the server's own JVM and called on the server thread. <code>level.setBlock</code> is an ordinary method call into the same memory, with no boundary, copy or thread hand-off, so there is no per-call overhead to amortise. The vanilla server already batches the parts that are expensive per change, such as lighting work and the block-change packets sent to clients.</p>
+    <p>The price is isolation: a Java mod is fully trusted and can crash or corrupt the server. A Pumpkin plugin runs in a sandbox with its own memory, can be stopped if it traps, and can be written in any language that targets WASM, so every call across the boundary has a fixed cost. Batching is how sandboxed APIs usually pay that cost once instead of per item; #3719's bulk section reads make the same argument for reads.</p>
+    <p>The NeoForge variants also show that batching the mod's own logic matters on any server: the same work in one loop instead of 10,000 block entities is 2.3× faster on NeoForge.</p>
+  </div>
+
+  <h2 id="limits">Limitations</h2>
+  <ul class="prose">
+    <li>One run per configuration. Repeated Pumpkin configurations differed by 10–20% between runs, far less than the effects reported here.</li>
+    <li>One workload, writes only. Other host calls (reads, entity work) were not measured, though they go through the same mechanism.</li>
+    <li>The plugin looks the overworld up by name every tick. Caching it would remove one round trip from the 1.2 ms floor.</li>
+    <li>The <code>wasm-batched</code> plugin was written by a local model (Qwen3.8-Flash-Next) under an automated gate that requires a build, clippy with <code>-D warnings</code> and a matching checksum on a live server, and was then reviewed. <code>bulk</code> and the patch were written with Claude.</li>
+  </ul>
+</div>

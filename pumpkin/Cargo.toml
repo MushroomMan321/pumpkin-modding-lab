@@ -1,0 +1,14 @@
+# Pumpkin-side plugins. Build on the benchmark host with Pumpkin cloned at ../../Pumpkin
+# (see scripts/setup-host.sh), so plugins compile against the exact server revision under test.
+[workspace]
+resolver = "3"
+# Variant crates written by the Qwen loop live in wasm-* and are picked up automatically.
+members = ["probe", "bulk", "wasm-*"]
+
+[workspace.dependencies]
+pumpkin-plugin-api = { path = "../../Pumpkin/crates/pumpkin-plugin-api" }
+psb-workload = { path = "../workload" }
+
+[profile.release]
+lto = true
+codegen-units = 1

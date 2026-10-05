@@ -1,0 +1,7 @@
+target/
+neoforge/build/
+neoforge/.gradle/
+neoforge/run/
+results/raw/*.log
+qwen/runs/
+qwen/*.log

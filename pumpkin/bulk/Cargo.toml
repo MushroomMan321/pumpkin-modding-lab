@@ -1,0 +1,13 @@
+[package]
+name = "psb-bulk"
+version = "0.1.0"
+edition = "2024"
+description = "wasm-batched with every world write of a tick sent in one set-block-states call"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+pumpkin-plugin-api = { workspace = true }
+psb-workload = { workspace = true }

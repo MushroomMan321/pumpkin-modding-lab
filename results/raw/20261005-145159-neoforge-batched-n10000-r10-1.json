@@ -1,0 +1,28 @@
+{
+  "name": "20261005-145159-neoforge-batched-n10000-r10-1",
+  "server": "neoforge",
+  "variant": "batched",
+  "n": 10000,
+  "rate_permille": 10,
+  "warmup_ticks": 1200,
+  "measure_ticks": 2400,
+  "cores": "5-9,15-19",
+  "heap": "6G",
+  "inference_paused": true,
+  "checksum_ok": true,
+  "energy_sum": "0000002a790c8281",
+  "energy_sum_expected": "0000002a790c8281",
+  "writes": 360000,
+  "tick_us": {
+    "count": 2400,
+    "mean": 631.8,
+    "p50": 603.3,
+    "p95": 829.5,
+    "p99": 1016.1,
+    "max": 1297.2
+  },
+  "wall_s": 120.15013977400667,
+  "cpu_s": 3.6299999999999955,
+  "cpu_us_per_tick": 1512.499999999998,
+  "rss_mib": 3301.66796875
+}

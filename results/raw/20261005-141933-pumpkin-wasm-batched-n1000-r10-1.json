@@ -1,0 +1,28 @@
+{
+  "name": "20261005-141933-pumpkin-wasm-batched-n1000-r10-1",
+  "server": "pumpkin",
+  "variant": "wasm-batched",
+  "n": 1000,
+  "rate_permille": 10,
+  "warmup_ticks": 100,
+  "measure_ticks": 200,
+  "cores": "5-9,15-19",
+  "heap": null,
+  "inference_paused": false,
+  "checksum_ok": true,
+  "energy_sum": "000000000a5c9e04",
+  "energy_sum_expected": "000000000a5c9e04",
+  "writes": 3000,
+  "tick_us": {
+    "count": 200,
+    "mean": 3220.5,
+    "p50": 3010.6,
+    "p95": 5211.3,
+    "p99": 5654.7,
+    "max": 6020.3
+  },
+  "wall_s": 10.004043879001983,
+  "cpu_s": 0.31999999999999984,
+  "cpu_us_per_tick": 1599.999999999999,
+  "rss_mib": 181.51953125
+}

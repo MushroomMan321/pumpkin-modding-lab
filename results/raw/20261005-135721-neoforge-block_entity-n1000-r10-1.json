@@ -1,0 +1,28 @@
+{
+  "name": "20261005-135721-neoforge-block_entity-n1000-r10-1",
+  "server": "neoforge",
+  "variant": "block_entity",
+  "n": 1000,
+  "rate_permille": 10,
+  "warmup_ticks": 100,
+  "measure_ticks": 200,
+  "cores": "5-9,15-19",
+  "heap": "6G",
+  "inference_paused": false,
+  "checksum_ok": true,
+  "energy_sum": "000000000a5c9e04",
+  "energy_sum_expected": "000000000a5c9e04",
+  "writes": 3000,
+  "tick_us": {
+    "count": 200,
+    "mean": 408.6,
+    "p50": 376.3,
+    "p95": 575.8,
+    "p99": 825.8,
+    "max": 2611.6
+  },
+  "wall_s": 10.149770992997219,
+  "cpu_s": 0.5299999999999976,
+  "cpu_us_per_tick": 2649.9999999999877,
+  "rss_mib": 2549.328125
+}

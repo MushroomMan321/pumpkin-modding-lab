@@ -1,0 +1,12 @@
+[package]
+name = "psb-probe"
+version = "0.1.0"
+edition = "2024"
+description = "Records Pumpkin's own per-tick duration for the benchmark harness"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+pumpkin-plugin-api = { workspace = true }

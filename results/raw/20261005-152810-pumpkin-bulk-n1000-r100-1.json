@@ -1,0 +1,30 @@
+{
+  "name": "20261005-152810-pumpkin-bulk-n1000-r100-1",
+  "server": "pumpkin",
+  "variant": "bulk",
+  "n": 1000,
+  "rate_permille": 100,
+  "warmup_ticks": 200,
+  "measure_ticks": 600,
+  "cores": "5-9,15-19",
+  "heap": null,
+  "pumpkin_bin": "~/psb/bin/pumpkin-2c7931a-bulk",
+  "pumpkin_bin_sha256": "57dbd1b2547cbb76",
+  "inference_paused": true,
+  "checksum_ok": true,
+  "energy_sum": "000000001945eba0",
+  "energy_sum_expected": "000000001945eba0",
+  "writes": 80000,
+  "tick_us": {
+    "count": 600,
+    "mean": 2371.2,
+    "p50": 2338.1,
+    "p95": 3417.4,
+    "p99": 3862.3,
+    "max": 3996.2
+  },
+  "wall_s": 30.004392817005282,
+  "cpu_s": 0.7,
+  "cpu_us_per_tick": 1166.6666666666667,
+  "rss_mib": 182.1328125
+}

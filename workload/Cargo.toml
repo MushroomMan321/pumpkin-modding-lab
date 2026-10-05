@@ -1,0 +1,17 @@
+[package]
+name = "psb-workload"
+version = "0.1.0"
+edition = "2024"
+description = "Reference implementation of the energy-grid benchmark workload (see SPEC.md)"
+license = "MIT"
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "goldens"
+path = "src/bin/goldens.rs"
+
+[[bin]]
+name = "checksum"
+path = "src/bin/checksum.rs"
