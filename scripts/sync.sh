@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Mirrors the working tree to the benchmark host (spark2 by default), deleting files
 # that no longer exist locally. Build outputs, caches, results, loop logs and the
-# Qwen-written crates (pumpkin/wasm-*, qwen/runs) on the host are kept; pull those
+# Qwen-written crates (pumpkin/wasm-*, pumpkin/plugin-*, qwen/runs) on the host are kept; pull those
 # with scripts/pull.sh.
 # Usage: scripts/sync.sh [host]
 set -euo pipefail
@@ -11,7 +11,7 @@ cd "$root"
 tar --exclude=./.git \
     --exclude=./neoforge/build --exclude=./neoforge/.gradle --exclude=./neoforge/run \
     --exclude='*/target' --exclude=./results \
-    --exclude=./qwen/runs --exclude='./qwen/*.log' --exclude='./pumpkin/wasm-*' \
+    --exclude=./qwen/runs --exclude='./qwen/*.log' --exclude='./pumpkin/wasm-*' --exclude='./pumpkin/plugin-*' \
     -czf - . | ssh -o BatchMode=yes "$host" '
       set -e
       rm -rf ~/psb/.incoming && mkdir -p ~/psb/.incoming ~/psb/bench
@@ -19,5 +19,5 @@ tar --exclude=./.git \
       rsync -a --delete \
         --exclude=/neoforge/build --exclude=/neoforge/.gradle --exclude=/neoforge/run \
         --exclude=target --exclude=/results --exclude=/run \
-        --exclude=/qwen/runs --exclude="/qwen/*.log" --exclude="/pumpkin/wasm-*" \
+        --exclude=/qwen/runs --exclude="/qwen/*.log" --exclude="/pumpkin/wasm-*" --exclude="/pumpkin/plugin-*" \
         ~/psb/.incoming/ ~/psb/bench/'

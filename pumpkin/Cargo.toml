@@ -2,8 +2,9 @@
 # (see scripts/setup-host.sh), so plugins compile against the exact server revision under test.
 [workspace]
 resolver = "3"
-# Variant crates written by the Qwen loop live in wasm-* and are picked up automatically.
-members = ["probe", "bulk", "wasm-*"]
+# Crates written by the Qwen loop live in wasm-* (benchmark variants) and plugin-* (plugins)
+# and are picked up automatically.
+members = ["probe", "bulk", "wasm-*", "plugin-*"]
 
 [workspace.dependencies]
 pumpkin-plugin-api = { path = "../../Pumpkin/crates/pumpkin-plugin-api" }

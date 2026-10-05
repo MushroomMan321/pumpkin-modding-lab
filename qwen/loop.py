@@ -6,8 +6,12 @@ Pumpkin source; writes only inside the task's allowed paths), a fast compile che
 gate. It can only finish after the gate has passed on the current code.
 
 Steering, all under the run's folder in qwen/runs/:
-- Stuck (no progress for a while, the same gate stage failing repeatedly, or the same edit
-  retried): the loop writes ESCALATION.md with Qwen's own status note and waits for hint.md.
+- Stuck (no progress for a while, too many reading turns in a row without writing or compiling,
+  the same gate stage failing repeatedly, or the same edit retried): the first time, the loop
+  nudges Qwen itself. It asks for a handoff note, restarts the conversation from it (NUDGE-<turn>.md)
+  with an order to write and compile, and switches off reading outside Qwen's own crate until
+  cargo_check or the gate reports an error. Stuck again with no progress since the nudge: the loop
+  writes ESCALATION.md with Qwen's own status note and waits for hint.md.
 - hint.md can also be written at any time; it is passed to Qwen at the start of the next turn.
   `stop` ends the run. The dashboard writes it for you.
 - Every --segment-turns turns, and when the turn or time budget runs out, Qwen writes a
@@ -73,43 +77,53 @@ TOOLS = [
     tool("edit_file", "Replace one exact, unique occurrence of old_text with new_text (allowed paths only).",
          path={"type": "string"}, old_text={"type": "string"}, new_text={"type": "string"}),
     tool("cargo_check", "Build the variant crate for wasm32-wasip2 and return compiler output. Fast."),
-    tool("run_gate", "Run qwen/gate.sh for the variant: build, clippy -D warnings, and a real Pumpkin "
-                     "run whose checksum must match. Slow (a few minutes)."),
+    tool("run_gate", "Run the task's gate script (see 'Done means' in the task): build, clippy -D warnings, "
+                     "and the task's checks on a real Pumpkin server. Slow (a few minutes)."),
     tool("finish", "End the task. Only accepted after run_gate has passed on the current code.",
          summary={"type": "string"}),
 ]
 
 
+READ_TOOLS = ("list_dir", "read_file", "search")
+READS_LOCKED = ("reading outside your own crate is switched off until cargo_check or run_gate reports "
+                "an error. Write the code from what you already know, then run cargo_check.")
+
+
 class Workspace:
-    def __init__(self, variant, allowed):
+    def __init__(self, variant, allowed, gate=None):
         self.variant = variant
+        self.gate = gate or f"qwen/gate.sh {variant}"
         self.allowed = [(BENCH / a).resolve() for a in allowed]
         self.gate_passed = False
+        # Set by an automatic nudge; reads are then limited to the allowed (own) paths.
+        self.reads_locked = False
 
-    def resolve(self, path):
+    def resolve(self, path, reading=False):
         p = (BENCH / path).resolve()
         if not any(p == r or r in p.parents for r in READ_ROOTS):
             raise ValueError(f"{path} is outside the repo and the Pumpkin source")
+        if reading and self.reads_locked and not self.writable(p):
+            raise PermissionError(READS_LOCKED)
         return p
 
     def writable(self, p):
         return any(p == a or a in p.parents for a in self.allowed)
 
     def list_dir(self, path):
-        p = self.resolve(path)
+        p = self.resolve(path, reading=True)
         rows = [f"{c.name}/" if c.is_dir() else c.name
                 for c in sorted(p.iterdir()) if c.name not in SKIP_DIRS]
         return "\n".join(rows) or "(empty)"
 
     def read_file(self, path, start_line=1, max_lines=400):
-        lines = self.resolve(path).read_text(errors="replace").splitlines()
+        lines = self.resolve(path, reading=True).read_text(errors="replace").splitlines()
         start = max(1, int(start_line or 1))
         chunk = lines[start - 1:start - 1 + int(max_lines or 400)]
         body = "\n".join(f"{start + i:5}  {line}" for i, line in enumerate(chunk))
         return f"{path} ({len(lines)} lines)\n{body}"
 
     def search(self, pattern, path):
-        p = self.resolve(path)
+        p = self.resolve(path, reading=True)
         cmd = ["grep", "-rnE", "--exclude-dir=target", "--exclude-dir=.git", pattern, str(p)]
         out = subprocess.run(cmd, capture_output=True, text=True).stdout
         return out.replace(str(BENCH) + "/", "") or "(no matches)"
@@ -137,18 +151,33 @@ class Workspace:
 
     def cargo_check(self):
         cmd = f". $HOME/.cargo/env && cd {BENCH}/pumpkin && taskset -c 10-14 cargo build --release -p psb-{self.variant} 2>&1 | tail -80"
-        return run_shell(cmd, 600)
+        out = run_shell(cmd, 600)
+        if not compiled(out):
+            self.reads_locked = False  # it may now look up what the error is about
+        return out
 
     def run_gate(self):
-        out = run_shell(f"bash {BENCH}/qwen/gate.sh {self.variant}", 1800)
+        out = run_shell(f"cd {BENCH} && bash {self.gate}", 1800)
         self.gate_passed = "GATE PASSED" in out
+        if not self.gate_passed:
+            self.reads_locked = False
         return out
 
 
-def scaffold(variant):
-    """Creates an empty crate for the variant if none exists, so the workspace glob resolves."""
+def compiled(cargo_output):
+    return "could not compile" not in cargo_output and "error[" not in cargo_output
+
+
+def scaffold(variant, template=None):
+    """Creates the variant's crate if none exists, so the workspace glob resolves: a copy of
+    `template` (a directory in the repo, `VARIANT` in its Cargo.toml replaced) or an empty crate."""
     crate = BENCH / "pumpkin" / variant
     if (crate / "Cargo.toml").exists():
+        return
+    if template:
+        shutil.copytree(BENCH / template, crate, dirs_exist_ok=True)
+        manifest = crate / "Cargo.toml"
+        manifest.write_text(manifest.read_text().replace("VARIANT", variant))
         return
     (crate / "src").mkdir(parents=True, exist_ok=True)
     (crate / "Cargo.toml").write_text(
@@ -173,7 +202,7 @@ def http_json(url, body=None, timeout=900):
         return json.loads(r.read())
 
 
-GATE_STAGES = {"setup": 0, "build": 1, "lint": 2, "smoke": 3}
+GATE_STAGES = {"setup": 0, "build": 1, "lint": 2, "test": 3, "smoke": 4}
 KEEP_FULL_RESULTS = 40
 STUB_LEN = 300
 
@@ -185,15 +214,29 @@ HANDOFF_PROMPT = """Stop working for a moment and write a handoff note for whoev
 4. The single next step you would take.
 Reply with the note only. Do not call a tool."""
 
+NUDGE_PROMPT = """Automatic check by the loop: {reason}. You have been reading instead of building.
+The handoff note above is what you already know, and it is enough to start. Reading the API and the
+server source is now switched off; you can still read the files in your own crate.
+
+Your next tool calls: write the files the task needs (complete code, your best guess where unsure),
+then cargo_check. The compiler is the fastest API reference: when cargo_check or run_gate reports an
+error, reading comes back, and then read only what that error is about."""
+
 
 class Progress:
     """Decides when the loop is stuck. Progress means: a file actually changed, a compile check went
-    from failing to passing, or the gate got further than before."""
+    from failing to passing, or the gate got further than before. Separately, too many reading turns
+    in a row (list_dir, read_file, search) without writing or compiling counts as stuck early."""
 
-    def __init__(self, explore_turns, stall_turns, gate_repeats):
+    def __init__(self, explore_turns, stall_turns, gate_repeats, read_budget=40, read_streak=15, own=()):
         self.explore_turns = explore_turns
         self.stall_turns = stall_turns
         self.gate_repeats = gate_repeats
+        self.read_budget = read_budget  # reading turns in a row allowed before anything is written
+        self.read_streak = read_streak  # the same, once code exists
+        # Reading Qwen's own crate (repo-relative prefixes) is part of writing it, so it does not
+        # count toward the reading streak; the stall limits still catch endless re-reading.
+        self.own = tuple(p.rstrip("/") + "/" for p in own)
         self.best_gate = -1
         self.reset(0)
 
@@ -203,8 +246,15 @@ class Progress:
         self.check_ok = None
         self.gate_fails = []  # stages of consecutive failed gates
         self.edits = {}       # (path, old, new) -> times attempted
+        self.reads = 0        # reading turns since the last write, compile or gate
 
     def note(self, turn, name, params, result):
+        if name in READ_TOOLS:
+            path = str(params.get("path", "")).lstrip("./") + "/"
+            if not path.startswith(self.own):
+                self.reads += 1
+        elif name in ("write_file", "edit_file", "cargo_check", "run_gate"):
+            self.reads = 0
         if name in ("write_file", "edit_file") and not result.startswith("error"):
             self.wrote_anything = True
             self.last_progress = turn
@@ -212,7 +262,7 @@ class Progress:
                 key = (params.get("path"), params.get("old_text"), params.get("new_text"))
                 self.edits[key] = self.edits.get(key, 0) + 1
         elif name == "cargo_check":
-            ok = "could not compile" not in result and "error[" not in result
+            ok = compiled(result)
             if ok and self.check_ok is False:
                 self.last_progress = turn
             self.check_ok = ok
@@ -239,6 +289,9 @@ class Progress:
         for key, count in self.edits.items():
             if count >= 3:
                 return f"the same edit to {key[0]} was attempted {count} times"
+        limit = self.read_streak if self.wrote_anything else self.read_budget
+        if self.reads >= limit:
+            return f"{self.reads} reading turns in a row without writing or compiling"
         return None
 
 
@@ -393,6 +446,12 @@ def parse_args():
     ap = argparse.ArgumentParser()
     ap.add_argument("--task", required=True)
     ap.add_argument("--variant", required=True)
+    ap.add_argument("--gate", default=None,
+                    help="gate command relative to the repo (default: qwen/gate.sh <variant>)")
+    ap.add_argument("--first-read", default="SPEC.md and pumpkin/probe/src/lib.rs",
+                    help="what the first message tells Qwen to read before starting")
+    ap.add_argument("--template", default=None,
+                    help="directory to start a new crate from (e.g. qwen/templates/plugin)")
     ap.add_argument("--model-base", default=LOCAL.get("model_base", "http://localhost:8000/v1"))
     ap.add_argument("--model", default=None)
     ap.add_argument("--thinking", default="on", choices=["on", "off"])
@@ -402,6 +461,10 @@ def parse_args():
                     help="turns per conversation before handing off to a fresh one")
     ap.add_argument("--explore-turns", type=int, default=90, help="stall limit before the first edit")
     ap.add_argument("--stall-turns", type=int, default=20, help="stall limit once code exists")
+    ap.add_argument("--read-budget", type=int, default=40,
+                    help="reading calls in a row allowed before anything is written")
+    ap.add_argument("--read-streak", type=int, default=15,
+                    help="reading calls in a row allowed once code exists")
     ap.add_argument("--gate-repeats", type=int, default=3,
                     help="the same failed gate stage this many times in a row counts as stuck")
     ap.add_argument("--seed-note", default=None, help="a handoff note to start from instead of scratch")
@@ -414,8 +477,8 @@ def parse_args():
 
 def run(a):
     allowed = [f"pumpkin/{a.variant}"]
-    ws = Workspace(a.variant, allowed)
-    scaffold(a.variant)
+    ws = Workspace(a.variant, allowed, a.gate)
+    scaffold(a.variant, a.template)
     model = a.model or http_json(a.model_base.rstrip("/") + "/models")["data"][0]["id"]
     run_dir = BENCH / "qwen" / "runs" / f"{dt.datetime.now():%Y%m%d-%H%M%S}-{a.variant}"
     run_dir.mkdir(parents=True)
@@ -430,7 +493,7 @@ def run(a):
                      f"{note}\n\nFiles that exist now:\n{current_files(a.variant)}\n"
                      "Re-read any file before you change it.")
         else:
-            first = intro + "Start by reading SPEC.md and pumpkin/probe/src/lib.rs."
+            first = intro + f"Start by reading {a.first_read}."
         return Transcript(SYSTEM, first)
 
     def status(state, **extra):
@@ -440,9 +503,11 @@ def run(a):
             indent=2))
 
     tr = fresh(Path(a.seed_note).read_text() if a.seed_note else None)
-    progress = Progress(a.explore_turns, a.stall_turns, a.gate_repeats)
+    progress = Progress(a.explore_turns, a.stall_turns, a.gate_repeats, a.read_budget, a.read_streak,
+                        own=allowed)
     deadline = time.monotonic() + a.minutes * 60
     segment_start = 1
+    nudge_turn = None  # turn of the last automatic nudge
     print(f"run {run_dir.name}: model {model}", flush=True)
     status("running")
 
@@ -464,7 +529,23 @@ def run(a):
 
         hint = take_hint(run_dir)
         reason = None if hint else progress.stuck(turn)
+        if reason and (nudge_turn is None or progress.last_progress > nudge_turn):
+            # First try: restart from Qwen's own note with an order to build, reading switched off.
+            note = handoff_note(a, model, tr)
+            (run_dir / f"NUDGE-{turn}.md").write_text(f"# Automatic nudge: {reason}\n\n{note}\n")
+            print(f"AUTO-NUDGE: {reason} (turn {turn}); fresh conversation, reading locked", flush=True)
+            wrote = progress.wrote_anything
+            tr = fresh(note)
+            tr.add_user(NUDGE_PROMPT.format(reason=reason))
+            progress.reset(turn)
+            progress.wrote_anything = wrote
+            segment_start = turn
+            nudge_turn = turn
+            ws.reads_locked = True
+            status("running", nudged_at=turn)
+            reason = None
         if reason:
+            reason += f" (after an automatic nudge at turn {nudge_turn})"
             note = handoff_note(a, model, tr)
             (run_dir / "ESCALATION.md").write_text(
                 f"# Stuck: {reason}\n\nTurn {turn}. Write guidance to `{run_dir / 'hint.md'}` or use the "
@@ -480,6 +561,7 @@ def run(a):
         if hint:
             print(f"hint received at turn {turn}: {hint[:100]}", flush=True)
             tr.add_user(f"Guidance from the person supervising you:\n\n{hint}")
+            ws.reads_locked = False  # the supervisor's guidance decides what to read
             progress.reset(turn)
             progress.wrote_anything = bool(current_files(a.variant))
             status("running")

@@ -1,0 +1,13 @@
+[package]
+name = "psb-VARIANT"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[lib]
+# rlib as well, so `cargo test --target <host>` can run the pure logic natively.
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+pumpkin-plugin-api = { workspace = true }
+tracing = "0.1"

@@ -12,6 +12,21 @@
 - Commit and push only when the user asks. Commits end with `Assisted-by: Ada`; never add claude.ai
   session links.
 
+## Writing tasks for the Qwen loop
+
+Qwen spends its turns rediscovering the API when a task leaves that to it (the first chain-mine
+run read for 110 turns and still got four API names wrong). So every task:
+
+- Points at `qwen/notes/pumpkin-plugin-api.md` and a template that already compiles
+  (`--template qwen/templates/plugin` for plugins). Before a task needs a call the sheet lacks,
+  add it to the skeleton, compile it, and add it to the sheet.
+- Has a gate checked end to end before the run (a stub that fails the plugin checks and passes
+  the rest), so Qwen never chases a broken gate.
+- Says what to read first and "read the API source only to resolve a compiler error".
+
+The loop nudges by itself when Qwen reads too long (fresh conversation, reading locked to its own
+crate until a compile or gate error) and escalates only if that fails.
+
 ## Contributing to Pumpkin itself
 
 Pumpkin's `AGENTS.md` applies to anything aimed at `Pumpkin-MC/Pumpkin`:

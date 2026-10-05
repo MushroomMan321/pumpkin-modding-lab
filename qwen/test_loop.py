@@ -1,6 +1,8 @@
 """Offline tests for the loop's stall detection and transcript trimming. Run: python3 qwen/test_loop.py"""
 
+import shutil
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -60,6 +62,41 @@ class ProgressTest(unittest.TestCase):
             p.note(t, "edit_file", edit, "edited a")
         self.assertIn("same edit", p.stuck(4))
 
+    def test_long_reading_streak_is_stuck_before_the_explore_limit(self):
+        p = self.p()
+        for t in range(1, 40):
+            p.note(t, "read_file", {"path": "x"}, "contents")
+        self.assertIsNone(p.stuck(39))
+        p.note(40, "search", {"path": "x", "pattern": "y"}, "hits")
+        self.assertIn("40 reading turns in a row", p.stuck(40))
+
+    def test_writing_or_compiling_ends_the_reading_streak(self):
+        p = self.p()
+        for t in range(1, 30):
+            p.note(t, "read_file", {"path": "x"}, "contents")
+        p.note(30, "cargo_check", {}, "error: could not compile `x`")
+        for t in range(31, 45):
+            p.note(t, "read_file", {"path": "x"}, "contents")
+        self.assertIsNone(p.stuck(45))
+
+    def test_shorter_reading_streak_once_code_exists(self):
+        p = self.p()
+        p.note(1, "write_file", {"path": "a"}, "wrote a")
+        for t in range(2, 17):
+            p.note(t, "read_file", {"path": "x"}, "contents")
+        self.assertIn("15 reading turns in a row", p.stuck(17))
+
+    def test_reading_own_crate_does_not_count_toward_the_streak(self):
+        p = loop.Progress(explore_turns=90, stall_turns=20, gate_repeats=3, own=["pumpkin/plugin-x"])
+        p.note(1, "write_file", {"path": "pumpkin/plugin-x/src/lib.rs"}, "wrote it")
+        for t in range(2, 19):
+            p.note(t, "read_file", {"path": "pumpkin/plugin-x/src/plan.rs"}, "contents")
+        p.note(19, "search", {"path": "pumpkin/plugin-x", "pattern": "pub fn"}, "hits")
+        self.assertIsNone(p.stuck(19))
+        p.note(20, "read_file", {"path": "../Pumpkin/crates/x.wit"}, "contents")
+        self.assertEqual(p.reads, 1)
+        self.assertIn("no progress", p.stuck(21))  # the stall limit still applies
+
     def test_gate_pass_clears_failures(self):
         p = self.p()
         p.note(1, "write_file", {"path": "a"}, "wrote a")
@@ -68,6 +105,76 @@ class ProgressTest(unittest.TestCase):
         p.note(4, "run_gate", {}, "GATE PASSED")
         p.note(5, "run_gate", {}, FAIL.format("smoke"))
         self.assertIsNone(p.stuck(6))
+
+
+class ReadLockTest(unittest.TestCase):
+    """After an automatic nudge, reading is limited to the task's own crate until a compile or gate
+    error, so Qwen has to write code instead of reading more of the API."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp()).resolve()
+        (self.tmp / "pumpkin" / "plugin-x" / "src").mkdir(parents=True)
+        (self.tmp / "pumpkin" / "plugin-x" / "src" / "lib.rs").write_text("// mine\n")
+        (self.tmp / "api.wit").write_text("func\n")
+        self.saved = (loop.BENCH, loop.READ_ROOTS, loop.run_shell)
+        loop.BENCH, loop.READ_ROOTS = self.tmp, [self.tmp]
+        self.ws = loop.Workspace("plugin-x", ["pumpkin/plugin-x"])
+        self.ws.reads_locked = True
+
+    def tearDown(self):
+        loop.BENCH, loop.READ_ROOTS, loop.run_shell = self.saved
+        shutil.rmtree(self.tmp)
+
+    def test_own_crate_stays_readable(self):
+        self.assertIn("// mine", self.ws.read_file("pumpkin/plugin-x/src/lib.rs"))
+
+    def test_everything_else_is_blocked(self):
+        for call in (lambda: self.ws.read_file("api.wit"), lambda: self.ws.search("func", "."),
+                     lambda: self.ws.list_dir(".")):
+            with self.assertRaisesRegex(PermissionError, "switched off"):
+                call()
+
+    def test_compile_error_unlocks_but_a_clean_build_does_not(self):
+        loop.run_shell = lambda cmd, timeout: "Finished `release` profile"
+        self.ws.cargo_check()
+        self.assertTrue(self.ws.reads_locked)
+        loop.run_shell = lambda cmd, timeout: "error[E0425]: cannot find value\nerror: could not compile"
+        self.ws.cargo_check()
+        self.assertFalse(self.ws.reads_locked)
+        self.assertIn("func", self.ws.read_file("api.wit"))
+
+    def test_failed_gate_unlocks(self):
+        loop.run_shell = lambda cmd, timeout: "GATE FAILED at stage: smoke"
+        self.ws.run_gate()
+        self.assertFalse(self.ws.reads_locked)
+
+
+class ScaffoldTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp()).resolve()
+        (self.tmp / "tpl" / "src").mkdir(parents=True)
+        (self.tmp / "tpl" / "Cargo.toml").write_text('name = "psb-VARIANT"\n')
+        (self.tmp / "tpl" / "src" / "lib.rs").write_text("// skeleton\n")
+        self.saved = loop.BENCH
+        loop.BENCH = self.tmp
+
+    def tearDown(self):
+        loop.BENCH = self.saved
+        shutil.rmtree(self.tmp)
+
+    def test_template_is_copied_with_the_name_filled_in(self):
+        loop.scaffold("plugin-x", "tpl")
+        crate = self.tmp / "pumpkin" / "plugin-x"
+        self.assertEqual((crate / "Cargo.toml").read_text(), 'name = "psb-plugin-x"\n')
+        self.assertEqual((crate / "src" / "lib.rs").read_text(), "// skeleton\n")
+
+    def test_existing_crate_is_left_alone(self):
+        crate = self.tmp / "pumpkin" / "plugin-x"
+        crate.mkdir(parents=True)
+        (crate / "Cargo.toml").write_text("mine\n")
+        loop.scaffold("plugin-x", "tpl")
+        self.assertEqual((crate / "Cargo.toml").read_text(), "mine\n")
+        self.assertFalse((crate / "src").exists())
 
 
 class TranscriptTest(unittest.TestCase):
