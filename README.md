@@ -8,9 +8,26 @@ pass energy to their neighbours and write blocks into the world (see [SPEC.md](S
 Every run is checked against a reference checksum before its timings are kept, so a
 variant can't look fast by doing less work.
 
-**Results: [docs/RESULTS.md](docs/RESULTS.md).** In short: plugin compute is close to free, but each
-world write from a WASM plugin costs about 0.33 ms of tick time, almost all of it the host-call round
-trip. A 31-line batched-write prototype takes 100 writes per tick from 30.6 ms to 2.2 ms.
+## Results
+
+10,000 machines, 100 block writes per tick, 2,400 measured ticks after 1,200 warm-up ticks. Every run
+reproduced the reference checksum. Full write-up: [docs/RESULTS.md](docs/RESULTS.md).
+
+| Variant | Server | Mean tick | p99 tick | CPU / tick | Memory |
+|---|---|---:|---:|---:|---:|
+| Block entity per machine | NeoForge 26.3 | 1.48 ms | 2.84 ms | 2.46 ms | 3,700 MB |
+| One loop over all machines | NeoForge 26.3 | **0.63 ms** | 1.02 ms | 1.51 ms | 3,302 MB |
+| WASM plugin, one host call per write | Pumpkin `2c7931a` | 36.03 ms | 55.82 ms ⚠️ | 12.34 ms | **183 MB** |
+| WASM plugin, one host call per tick | Pumpkin + [bulk-write patch](pumpkin/patches/bulk-write.py) | 2.21 ms | 3.66 ms | 1.17 ms | 184 MB |
+
+⚠️ over the 50 ms tick budget (20 TPS).
+
+- Plugin compute is close to free: 1 machine and 10,000 machines give the same tick time on Pumpkin.
+- Each world write from a WASM plugin costs about 0.33 ms, almost all of it the host-call round trip
+  (`pump_blocking`), so tick time grows in a straight line with the number of writes.
+- Sending a tick's writes in one `set-block-states` call (a 31-line prototype) cuts that to about
+  6 µs per write. What remains is about 1.2 ms per tick for calling the plugin at all.
+- Single runs on a DGX Spark (GB10), server pinned to its ten Cortex-X925 cores.
 
 ## Variants
 
