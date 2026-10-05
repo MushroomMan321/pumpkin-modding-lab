@@ -5,3 +5,4 @@ neoforge/run/
 results/raw/*.log
 qwen/runs/
 qwen/*.log
+CLAUDE.local.md
