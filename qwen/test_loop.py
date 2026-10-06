@@ -107,6 +107,88 @@ class ProgressTest(unittest.TestCase):
         self.assertIsNone(p.stuck(6))
 
 
+class MilestoneTest(unittest.TestCase):
+    def p(self):
+        return loop.Progress(explore_turns=90, stall_turns=20, gate_repeats=3)
+
+    def test_first_clean_compile_is_a_milestone_once(self):
+        p = self.p()
+        p.note(1, "cargo_check", {}, "error[E0425]: x\nerror: could not compile")
+        self.assertIsNone(p.milestone)
+        p.note(2, "cargo_check", {}, "Finished `release` profile")
+        self.assertEqual(p.milestone, "the crate compiles")
+        p.milestone = None
+        p.note(3, "cargo_check", {}, "Finished `release` profile")
+        self.assertIsNone(p.milestone)
+
+    def test_green_unit_tests_are_a_milestone(self):
+        p = self.p()
+        p.note(1, "cargo_check", {}, "Finished\n=== unit tests (native)\ntest result: FAILED. 7 passed; 1 failed;")
+        p.milestone = None
+        p.note(2, "cargo_check", {}, "Finished\n=== unit tests (native)\ntest result: ok. 8 passed; 0 failed;")
+        self.assertEqual(p.milestone, "all unit tests pass")
+
+    def test_each_new_gate_stage_from_lint_on_is_a_milestone(self):
+        p = self.p()
+        p.note(1, "run_gate", {}, FAIL.format("build"))
+        self.assertIsNone(p.milestone)
+        p.note(2, "run_gate", {}, FAIL.format("lint"))
+        self.assertIn("'lint'", p.milestone)
+        p.milestone = None
+        p.note(3, "run_gate", {}, FAIL.format("lint"))
+        self.assertIsNone(p.milestone)
+        p.note(4, "run_gate", {}, FAIL.format("smoke"))
+        self.assertIn("'smoke'", p.milestone)
+
+    def test_milestones_survive_a_reset(self):
+        p = self.p()
+        p.note(1, "cargo_check", {}, "Finished")
+        p.reset(5)
+        p.milestone = None
+        p.note(6, "cargo_check", {}, "Finished")
+        self.assertIsNone(p.milestone)
+
+    def test_tests_green_needs_at_least_one_test_and_no_failures(self):
+        self.assertFalse(loop.tests_green("test result: ok. 0 passed; 0 failed;"))
+        self.assertFalse(loop.tests_green("test result: ok. 3 passed; 0 failed;\ntest result: FAILED. 1 passed; 2 failed;"))
+        self.assertTrue(loop.tests_green("test result: ok. 3 passed; 0 failed;\ntest result: ok. 0 passed; 0 failed;"))
+        self.assertFalse(loop.tests_green("Finished `release` profile"))
+
+
+class ManagerTest(unittest.TestCase):
+    def setUp(self):
+        self.real_ask = loop.ask
+        self.args = type("A", (), {"model_base": "http://x"})()
+
+    def tearDown(self):
+        loop.ask = self.real_ask
+
+    def test_step_is_the_next_section(self):
+        loop.ask = lambda *a, **k: {"content": "### NEXT\nFix the import in src/lib.rs.\n### WHY\nIt fails."}
+        step = loop.manager_step(self.args, "m", "task", "notes", "facts", [])
+        self.assertEqual(step, "Fix the import in src/lib.rs.")
+
+    def test_unstructured_reply_is_used_whole(self):
+        loop.ask = lambda *a, **k: {"content": "Run cargo_check."}
+        self.assertEqual(loop.manager_step(self.args, "m", "task", "notes", "facts", []), "Run cargo_check.")
+
+    def test_same_step_ignores_case_and_punctuation(self):
+        self.assertTrue(loop.same_step("Fix the import in src/lib.rs.", "fix the import in src lib rs"))
+        self.assertFalse(loop.same_step("Fix the import.", "Rewrite plan.rs."))
+
+    def test_notes_are_kept_when_the_model_gives_nothing(self):
+        tmp = Path(tempfile.mkdtemp())
+        try:
+            notes = tmp / "notes.md"
+            notes.write_text("old notes\n")
+            loop.ask = lambda *a, **k: {"content": ""}
+            tr = loop.Transcript("sys", "task")
+            self.assertEqual(loop.update_notes(self.args, "m", tr, notes), "old notes\n")
+            self.assertEqual(notes.read_text(), "old notes\n")
+        finally:
+            shutil.rmtree(tmp)
+
+
 class ReadLockTest(unittest.TestCase):
     """After an automatic nudge, reading is limited to the task's own crate until a compile or gate
     error, so Qwen has to write code instead of reading more of the API."""
@@ -147,6 +229,125 @@ class ReadLockTest(unittest.TestCase):
         loop.run_shell = lambda cmd, timeout: "GATE FAILED at stage: smoke"
         self.ws.run_gate()
         self.assertFalse(self.ws.reads_locked)
+
+    def test_check_tests_runs_unit_tests_only_after_a_clean_build(self):
+        ws = loop.Workspace("plugin-x", ["pumpkin/plugin-x"], check_tests=True)
+        cmds = []
+
+        def shell(cmd, timeout):
+            cmds.append(cmd)
+            return "test result: ok. 9 passed; 0 failed;" if "cargo test" in cmd else self.build_out
+
+        loop.run_shell = shell
+        self.build_out = "error[E0425]: x\nerror: could not compile"
+        self.assertNotIn("unit tests", ws.cargo_check())
+        self.build_out = "Finished `release` profile"
+        out = ws.cargo_check()
+        self.assertIn("=== unit tests (native)\ntest result: ok. 9 passed", out)
+        self.assertEqual(sum("cargo test" in c for c in cmds), 1)
+        self.assertEqual(ws.last_check, out)
+
+
+class ScriptedRunTest(unittest.TestCase):
+    """Drives run() end to end with a scripted model and a fake shell, to check the wiring of
+    milestones, the manager and escalation."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp()).resolve()
+        (self.tmp / "task.md").write_text("Write the plugin.\n")
+        (self.tmp / "api.wit").write_text("func\n")
+        self.saved = (loop.BENCH, loop.READ_ROOTS, loop.run_shell, loop.ask, loop.wait_for_hint, sys.argv,
+                      loop.USAGE)
+        loop.BENCH, loop.READ_ROOTS = self.tmp, [self.tmp]
+        loop.USAGE = loop.Usage()
+        self.calls = []       # scripted tool calls, consumed in order
+        self.manager = []     # scripted manager replies, consumed in order
+        self.first_messages = []
+
+        def ask(base, model, messages, thinking, tool_choice="required", max_tokens=16384):
+            if tool_choice == "none":
+                if messages[0]["content"] == loop.MANAGER_SYSTEM:
+                    return {"content": self.manager.pop(0)}
+                return {"content": "## Built\n- lib.rs\n## Next step\n- run the gate"}
+            if not self.first_messages or self.first_messages[-1] is not messages[1]:
+                self.first_messages.append(messages[1])
+            name, args = self.calls.pop(0)
+            return {"content": "", "tool_calls": [
+                {"id": str(len(self.calls)), "function": {"name": name, "arguments": loop.json.dumps(args)}}]}
+
+        loop.ask = ask
+        loop.run_shell = lambda cmd, timeout: self.shell(cmd)
+
+    def tearDown(self):
+        (loop.BENCH, loop.READ_ROOTS, loop.run_shell, loop.ask, loop.wait_for_hint, sys.argv,
+         loop.USAGE) = self.saved
+        shutil.rmtree(self.tmp)
+
+    def run_loop(self, *extra):
+        sys.argv = ["loop.py", "--task", "task.md", "--variant", "plugin-x", "--model", "m", "--no-ledger",
+                    "--read-budget", "3", "--read-streak", "3", *extra]
+        loop.run(loop.parse_args())
+        run_dir = next((self.tmp / "qwen" / "runs").iterdir())
+        return run_dir, loop.json.loads((run_dir / "status.json").read_text())
+
+    def test_milestone_rewrites_notes_and_restarts_then_finishes(self):
+        self.shell = lambda cmd: "GATE PASSED" if "bash" in cmd else "Finished `release` profile"
+        self.calls = [("write_file", {"path": "pumpkin/plugin-x/src/lib.rs", "content": "// x\n"}),
+                      ("cargo_check", {}), ("run_gate", {}), ("finish", {"summary": "done"})]
+        run_dir, status = self.run_loop()
+        self.assertEqual(status["state"], "finished")
+        self.assertIn("## Built", (run_dir / "notes.md").read_text())
+        self.assertTrue((run_dir / "MILESTONE-2.md").exists())
+        self.assertEqual(len(self.first_messages), 2)  # the original conversation and one fresh one
+        self.assertIn("notes file (notes.md)", self.first_messages[1]["content"])
+
+    def test_stall_gets_a_manager_step_and_no_progress_after_it_escalates(self):
+        self.shell = lambda cmd: "Finished"
+        self.calls = [("read_file", {"path": "api.wit"})] * 6
+        self.manager = ["### NEXT\nWrite src/lib.rs now.\n### WHY\nNothing written."]
+        loop.wait_for_hint = lambda run_dir, poll=10: loop.STOP
+        run_dir, status = self.run_loop()
+        self.assertEqual(status["state"], "stopped")
+        self.assertIn("Write src/lib.rs now.", (run_dir / "MANAGER-4.md").read_text())
+        self.assertIn("after an automatic nudge at turn 4", (run_dir / "ESCALATION-7.md").read_text())
+        # After the manager step, reading outside the crate was refused.
+        turns = [loop.json.loads(l) for l in (run_dir / "turns.jsonl").read_text().splitlines()]
+        self.assertIn("switched off", turns[-1]["result"])
+
+    def test_progress_in_the_turn_of_a_manager_step_earns_another_step(self):
+        self.shell = lambda cmd: "Finished"
+        reads = [("read_file", {"path": "api.wit"})] * 3
+        write = ("write_file", {"path": "pumpkin/plugin-x/src/lib.rs", "content": "// x\n"})
+        self.calls = reads + [write] + reads + reads
+        self.manager = ["### NEXT\nWrite src/lib.rs now.\n### WHY\nNothing written.",
+                        "### NEXT\nRun cargo_check.\n### WHY\nCode exists."]
+        loop.wait_for_hint = lambda run_dir, poll=10: loop.STOP
+        run_dir, status = self.run_loop()
+        self.assertTrue((run_dir / "MANAGER-4.md").exists())
+        self.assertTrue((run_dir / "MANAGER-8.md").exists())  # the write at turn 4 counted
+        self.assertIn("after an automatic nudge at turn 8", (run_dir / "ESCALATION-11.md").read_text())
+
+    def test_manager_repeating_a_step_escalates(self):
+        self.shell = lambda cmd: "Finished"
+        reads = [("read_file", {"path": "api.wit"})] * 3
+        write = ("write_file", {"path": "pumpkin/plugin-x/src/lib.rs", "content": "// x\n"})
+        self.calls = reads + [write, write] + reads
+        self.manager = ["### NEXT\nWrite src/lib.rs now.\n### WHY\nNothing written.",
+                        "### NEXT\nwrite src/lib.rs now\n### WHY\nStill stuck."]
+        loop.wait_for_hint = lambda run_dir, poll=10: loop.STOP
+        run_dir, status = self.run_loop()
+        self.assertTrue((run_dir / "MANAGER-4.md").exists())
+        self.assertIn("repeated an earlier step", (run_dir / "ESCALATION-9.md").read_text())
+        self.assertEqual(status["state"], "stopped")
+
+    def test_plain_mode_uses_the_generic_nudge(self):
+        self.shell = lambda cmd: "Finished"
+        self.calls = [("read_file", {"path": "api.wit"})] * 6
+        loop.wait_for_hint = lambda run_dir, poll=10: loop.STOP
+        run_dir, status = self.run_loop("--ledger", "off")
+        self.assertTrue((run_dir / "NUDGE-4.md").exists())
+        self.assertFalse((run_dir / "notes.md").exists())
+        self.assertEqual(status["state"], "stopped")
 
 
 class ScaffoldTest(unittest.TestCase):

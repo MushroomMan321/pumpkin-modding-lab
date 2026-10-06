@@ -20,8 +20,10 @@ run read for 110 turns and still got four API names wrong). So every task:
 - Points at `qwen/notes/pumpkin-plugin-api.md` and a template that already compiles
   (`--template qwen/templates/plugin` for plugins). Before a task needs a call the sheet lacks,
   add it to the skeleton, compile it, and add it to the sheet.
-- Has a gate checked end to end before the run (a stub that fails the plugin checks and passes
-  the rest), so Qwen never chases a broken gate.
+- Has a gate checked end to end before the run, every stage: a stub built from the template, with
+  a couple of unit tests, that fails the plugin checks and passes the rest. (The first chain-mine
+  gate was checked from the smoke stage only, and its test stage could not link a cdylib+rlib
+  crate; Qwen lost an escalation to it.)
 - Says what to read first and "read the API source only to resolve a compiler error".
 
 The loop nudges by itself when Qwen reads too long (fresh conversation, reading locked to its own

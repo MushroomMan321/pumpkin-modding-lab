@@ -5,8 +5,9 @@ edition = "2024"
 license = "MIT"
 
 [lib]
-# rlib as well, so `cargo test --target <host>` can run the pure logic natively.
-crate-type = ["cdylib", "rlib"]
+# cdylib only. Unit tests still run natively with `cargo test --lib --target <host>`; adding "rlib"
+# makes a plain native `cargo test` try to link the cdylib, which fails on the API's wasm exports.
+crate-type = ["cdylib"]
 
 [dependencies]
 pumpkin-plugin-api = { workspace = true }

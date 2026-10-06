@@ -95,7 +95,9 @@ no `Console` variant. Console feedback is printed to the server log (and broadca
 
 ## Testing
 
-- `crate-type = ["cdylib", "rlib"]` lets `cargo test --target <host triple>` run natively. The API
-  compiles natively but every host call panics there: keep tested logic in plain functions.
+- Unit tests run natively with `cargo test --lib --target <host triple>` (crate-type `["cdylib"]`).
+  Do not add `"rlib"`: then a plain native `cargo test` tries to link the cdylib and fails on the
+  API's wasm export names. The API compiles natively but every host call panics there: keep tested
+  logic in plain functions.
 - The benchmark host has no player online: chunks load only on the patched server
   (`~/psb/bin/pumpkin-2c7931a-fl`), whose `/forceload` works.

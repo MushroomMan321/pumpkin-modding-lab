@@ -5,13 +5,21 @@ Runs on the benchmark host. The model gets file tools (reads anywhere in the rep
 Pumpkin source; writes only inside the task's allowed paths), a fast compile check, and the
 gate. It can only finish after the gate has passed on the current code.
 
+Ledger mode (--ledger on, the default; adapted from GVS5H's ledger-based self-orchestration for a
+tool-using agent): Qwen keeps notes.md in the run folder (what is built, a map of its own code, API
+facts, open problems, next step). It rewrites it at every milestone (first clean compile, unit tests
+green, each new gate stage) and the conversation restarts from it, so contexts stay short.
+--ledger off keeps the plain loop (handoff notes only).
+
 Steering, all under the run's folder in qwen/runs/:
 - Stuck (no progress for a while, too many reading turns in a row without writing or compiling,
   the same gate stage failing repeatedly, or the same edit retried): the first time, the loop
-  nudges Qwen itself. It asks for a handoff note, restarts the conversation from it (NUDGE-<turn>.md)
-  with an order to write and compile, and switches off reading outside Qwen's own crate until
-  cargo_check or the gate reports an error. Stuck again with no progress since the nudge: the loop
-  writes ESCALATION.md with Qwen's own status note and waits for hint.md.
+  handles it without a person and restarts the conversation with reading outside Qwen's own crate
+  switched off until cargo_check or the gate reports an error. Ledger mode: Qwen updates notes.md
+  and a tool-less manager call turns the notes and the measured compiler and gate output into one
+  next step (MANAGER-<turn>.md). Plain mode: a handoff note and a generic order to write and
+  compile (NUDGE-<turn>.md). Stuck again with no progress since, or the manager repeating a step:
+  the loop writes ESCALATION.md with Qwen's own note and waits for hint.md.
 - hint.md can also be written at any time; it is passed to Qwen at the start of the next turn.
   `stop` ends the run. The dashboard writes it for you.
 - Every --segment-turns turns, and when the turn or time budget runs out, Qwen writes a
@@ -25,6 +33,7 @@ Steering, all under the run's folder in qwen/runs/:
 import argparse
 import datetime as dt
 import json
+import re
 import shutil
 import signal
 import subprocess
@@ -90,13 +99,17 @@ READS_LOCKED = ("reading outside your own crate is switched off until cargo_chec
 
 
 class Workspace:
-    def __init__(self, variant, allowed, gate=None):
+    def __init__(self, variant, allowed, gate=None, check_tests=False):
         self.variant = variant
         self.gate = gate or f"qwen/gate.sh {variant}"
         self.allowed = [(BENCH / a).resolve() for a in allowed]
+        self.check_tests = check_tests  # cargo_check also runs the native unit tests
         self.gate_passed = False
         # Set by an automatic nudge; reads are then limited to the allowed (own) paths.
         self.reads_locked = False
+        # The latest measured results, for the manager (ground truth, not what Qwen claims).
+        self.last_check = ""
+        self.last_gate = ""
 
     def resolve(self, path, reading=False):
         p = (BENCH / path).resolve()
@@ -150,10 +163,17 @@ class Workspace:
         return f"edited {path}"
 
     def cargo_check(self):
-        cmd = f". $HOME/.cargo/env && cd {BENCH}/pumpkin && taskset -c 10-14 cargo build --release -p psb-{self.variant} 2>&1 | tail -80"
-        out = run_shell(cmd, 600)
+        env = f". $HOME/.cargo/env && cd {BENCH}/pumpkin && "
+        out = run_shell(env + f"taskset -c 10-14 cargo build --release -p psb-{self.variant} 2>&1 | tail -80", 600)
+        if compiled(out) and self.check_tests:
+            tests = run_shell(
+                env + 'host="$(rustc -vV | sed -n "s/^host: //p")" && '
+                f'taskset -c 10-14 cargo test --release -p psb-{self.variant} --target "$host" --lib 2>&1 '
+                "| grep -E '^(test |test result|error|failures:|---- |thread .* panicked)' | tail -60", 900)
+            out += f"\n=== unit tests (native)\n{tests}"
         if not compiled(out):
             self.reads_locked = False  # it may now look up what the error is about
+        self.last_check = out
         return out
 
     def run_gate(self):
@@ -161,11 +181,21 @@ class Workspace:
         self.gate_passed = "GATE PASSED" in out
         if not self.gate_passed:
             self.reads_locked = False
+        self.last_gate = out
         return out
 
 
 def compiled(cargo_output):
     return "could not compile" not in cargo_output and "error[" not in cargo_output
+
+
+TEST_RESULT = re.compile(r"test result: (ok|FAILED)\. (\d+) passed; (\d+) failed")
+
+
+def tests_green(cargo_output):
+    """True when cargo_check ran unit tests, at least one ran, and none failed."""
+    results = TEST_RESULT.findall(cargo_output)
+    return bool(results) and all(r[0] == "ok" for r in results) and sum(int(r[1]) for r in results) > 0
 
 
 def scaffold(variant, template=None):
@@ -222,6 +252,49 @@ Your next tool calls: write the files the task needs (complete code, your best g
 then cargo_check. The compiler is the fastest API reference: when cargo_check or run_gate reports an
 error, reading comes back, and then read only what that error is about."""
 
+# --- ledger mode: a notes file that survives fresh conversations, and a manager for stalls ---
+
+NOTES_PROMPT = """Pause and rewrite the run's notes file. It is the only memory that survives: the next
+conversation starts fresh from the task and this file. The current file:
+
+{notes}
+
+Rewrite the COMPLETE file (it replaces the old one), under 800 words, as '- ' bullets under exactly
+these headings:
+## Built
+## Code map
+(every file in your crate with its public functions, types and constants: exact names and signatures)
+## API facts learned
+(exact paths and signatures that compiled, and mistakes not to repeat)
+## Open problems
+(the exact current compiler errors or failing gate checks, if any)
+## Next step
+Keep what still matters; delete what is superseded or disproven. Reply with the file only. Do not call
+a tool."""
+
+MILESTONE_PROMPT = """Milestone reached: {milestone}. This is a fresh conversation; the notes above are
+what you know. Continue with the next step in the notes, and keep going until run_gate passes."""
+
+MANAGER_SYSTEM = """You manage a coding agent that has stalled. You do not write code. Read the task,
+the agent's notes and the measured facts (compiler and gate output: ground truth, unlike the notes),
+then give the agent the ONE next step most likely to make measurable progress. Be concrete: name the
+file, the function and the change, or the exact command to run. If the facts or the earlier steps show
+the same fix failing repeatedly, choose a different approach rather than repeating it. Reply with
+exactly:
+### NEXT
+<one step, at most 5 sentences>
+### WHY
+<one sentence>"""
+
+MANAGER_STEP_PROMPT = """The loop stopped you because {reason}. This is a fresh conversation; the notes
+above are what you know. Your manager read the notes and the latest compiler and gate output and
+gives you this next step:
+
+{step}
+
+Do that step now. Reading outside your own crate is switched off until cargo_check or run_gate reports
+an error; then read only what that error is about."""
+
 
 class Progress:
     """Decides when the loop is stuck. Progress means: a file actually changed, a compile check went
@@ -238,6 +311,13 @@ class Progress:
         # count toward the reading streak; the stall limits still catch endless re-reading.
         self.own = tuple(p.rstrip("/") + "/" for p in own)
         self.best_gate = -1
+        # Milestones (first clean compile, unit tests green, each new gate stage) are reported once
+        # each in `milestone` for the loop to pick up; ledger mode starts a fresh conversation there.
+        self.reached = set()
+        self.milestone = None
+        # Counts every real progress event (never reset), so the loop can tell whether anything
+        # happened since a nudge, even within the turn the nudge was given in.
+        self.gains = 0
         self.reset(0)
 
     def reset(self, turn):
@@ -257,25 +337,41 @@ class Progress:
             self.reads = 0
         if name in ("write_file", "edit_file") and not result.startswith("error"):
             self.wrote_anything = True
-            self.last_progress = turn
+            self.progressed(turn)
             if name == "edit_file":
                 key = (params.get("path"), params.get("old_text"), params.get("new_text"))
                 self.edits[key] = self.edits.get(key, 0) + 1
         elif name == "cargo_check":
             ok = compiled(result)
             if ok and self.check_ok is False:
-                self.last_progress = turn
+                self.progressed(turn)
             self.check_ok = ok
+            if ok:
+                self.reach(turn, "compiles", "the crate compiles")
+            if tests_green(result):
+                self.reach(turn, "tests", "all unit tests pass")
         elif name == "run_gate":
             if "GATE PASSED" in result:
                 self.gate_fails = []
-                self.last_progress = turn
+                self.progressed(turn)
                 return
             stage = next((st for st in GATE_STAGES if f"GATE FAILED at stage: {st}" in result), "setup")
             if GATE_STAGES[stage] > self.best_gate:
                 self.best_gate = GATE_STAGES[stage]
-                self.last_progress = turn
+                self.progressed(turn)
+                if GATE_STAGES[stage] >= GATE_STAGES["lint"]:
+                    self.reach(turn, f"gate:{stage}", f"the gate now gets as far as its '{stage}' stage")
             self.gate_fails.append(stage)
+
+    def progressed(self, turn):
+        self.last_progress = turn
+        self.gains += 1
+
+    def reach(self, turn, key, text):
+        if key not in self.reached:
+            self.reached.add(key)
+            self.milestone = text
+            self.progressed(turn)
 
     def stuck(self, turn):
         """Returns a reason when the loop should stop and ask for help, else None."""
@@ -388,16 +484,63 @@ def ask(base, model, messages, thinking, tool_choice="required", max_tokens=1638
     return resp["choices"][0]["message"]
 
 
-def handoff_note(a, model, transcript):
-    msgs = transcript.messages + [{"role": "user", "content": HANDOFF_PROMPT}]
+def reply_without_tools(a, model, messages, max_tokens=2048):
+    """One plain-text reply (no tool call), with retries. None if the model never answered."""
     for _ in range(3):
         try:
-            note = ask(a.model_base, model, msgs, False, tool_choice="none", max_tokens=2048)
-            return (note.get("content") or "").strip() or "(empty handoff note)"
+            msg = ask(a.model_base, model, messages, False, tool_choice="none", max_tokens=max_tokens)
+            return (msg.get("content") or "").strip() or None
         except Exception as e:
-            print(f"handoff note failed: {e}; retrying", flush=True)
+            print(f"plain reply failed: {e}; retrying", flush=True)
             time.sleep(15)
-    return "(the model did not produce a handoff note)"
+    return None
+
+
+def handoff_note(a, model, transcript):
+    msgs = transcript.messages + [{"role": "user", "content": HANDOFF_PROMPT}]
+    return reply_without_tools(a, model, msgs) or "(the model did not produce a handoff note)"
+
+
+def update_notes(a, model, transcript, notes_path):
+    """Ledger mode: Qwen rewrites notes.md from its current conversation. Keeps the old file if the
+    model gives no answer."""
+    old = notes_path.read_text() if notes_path.exists() else "(empty: this is the first version)"
+    msgs = transcript.messages + [{"role": "user", "content": NOTES_PROMPT.format(notes=old)}]
+    new = reply_without_tools(a, model, msgs, max_tokens=3072)
+    if new:
+        notes_path.write_text(new + "\n")
+        return new
+    return old
+
+
+def manager_step(a, model, task, notes, facts, earlier_steps):
+    """Ledger mode: a fresh, tool-less call that turns the notes and the measured facts into one
+    next step. Returns the step text, or None if the model gave no usable answer."""
+    earlier = "\n".join(f"- {s}" for s in earlier_steps) or "(none)"
+    msgs = [{"role": "system", "content": MANAGER_SYSTEM},
+            {"role": "user", "content": f"TASK:\n{task}\n\nAGENT'S NOTES:\n{notes}\n\nMEASURED FACTS:\n{facts}\n\n"
+                                        f"STEPS YOU GAVE EARLIER IN THIS RUN:\n{earlier}"}]
+    reply = reply_without_tools(a, model, msgs, max_tokens=1024)
+    if not reply:
+        return None
+    m = re.search(r"#+\s*NEXT\s*\n(.*?)(?:\n#+\s*WHY\b|\Z)", reply, re.S | re.I)
+    step = (m.group(1) if m else reply).strip()
+    return step or None
+
+
+def same_step(a, b):
+    """Whether two manager steps say the same thing (ignoring case, spacing and punctuation)."""
+    norm = lambda s: re.sub(r"[^a-z0-9]+", " ", s.lower()).strip()  # noqa: E731
+    return norm(a) == norm(b)
+
+
+def measured_facts(reason, ws, progress, files):
+    stage = next((s for s, i in GATE_STAGES.items() if i == progress.best_gate), "never run")
+    return (f"Why the agent was stopped: {reason}\n"
+            f"Furthest gate stage reached so far: {stage}\n"
+            f"Files in the crate:\n{files}\n\n"
+            f"Latest cargo_check output (tail):\n{ws.last_check[-3000:] or '(not run yet)'}\n\n"
+            f"Latest run_gate output (tail):\n{ws.last_gate[-4000:] or '(not run yet)'}")
 
 
 def current_files(variant):
@@ -468,6 +611,11 @@ def parse_args():
     ap.add_argument("--gate-repeats", type=int, default=3,
                     help="the same failed gate stage this many times in a row counts as stuck")
     ap.add_argument("--seed-note", default=None, help="a handoff note to start from instead of scratch")
+    ap.add_argument("--ledger", default="on", choices=["on", "off"],
+                    help="on: notes.md rewritten at milestones, fresh conversation at each milestone, a "
+                         "manager call on stalls; off: handoff notes and the generic nudge only")
+    ap.add_argument("--check-tests", action="store_true",
+                    help="cargo_check also runs the crate's native unit tests")
     ap.add_argument("--ledger-host", default=LOCAL.get("ledger_host"),
                     help="host holding a token-usage log to append one record per run to (off if unset)")
     ap.add_argument("--ledger-path", default=LOCAL.get("ledger_path", "~/token_log.jsonl"))
@@ -477,24 +625,44 @@ def parse_args():
 
 def run(a):
     allowed = [f"pumpkin/{a.variant}"]
-    ws = Workspace(a.variant, allowed, a.gate)
+    ws = Workspace(a.variant, allowed, a.gate, a.check_tests)
     scaffold(a.variant, a.template)
     model = a.model or http_json(a.model_base.rstrip("/") + "/models")["data"][0]["id"]
     run_dir = BENCH / "qwen" / "runs" / f"{dt.datetime.now():%Y%m%d-%H%M%S}-{a.variant}"
     run_dir.mkdir(parents=True)
     USAGE.run_dir = run_dir
     log = open(run_dir / "turns.jsonl", "w")
-    intro = f"{(BENCH / a.task).read_text()}\n\nAllowed write paths: {', '.join(allowed)}.\n"
+    task_text = (BENCH / a.task).read_text()
+    intro = f"{task_text}\n\nAllowed write paths: {', '.join(allowed)}.\n"
+    ledger = a.ledger == "on"
+    notes_path = run_dir / "notes.md"
+    if ledger and a.seed_note:
+        notes_path.write_text(Path(a.seed_note).read_text())
     turn = 0
 
     def fresh(note=None):
         if note:
-            first = (f"{intro}\nYou are continuing work that was already started. The handoff note:\n\n"
+            label = "Your notes file (notes.md), kept up to date by you:" if ledger else "The handoff note:"
+            first = (f"{intro}\nYou are continuing work that was already started. {label}\n\n"
                      f"{note}\n\nFiles that exist now:\n{current_files(a.variant)}\n"
                      "Re-read any file before you change it.")
         else:
             first = intro + f"Start by reading {a.first_read}."
         return Transcript(SYSTEM, first)
+
+    def note_for_handoff():
+        return update_notes(a, model, tr, notes_path) if ledger else handoff_note(a, model, tr)
+
+    def restart(note, message, turn_now):
+        """Fresh conversation from `note`, keeping what Progress knows about written code."""
+        nonlocal tr, segment_start
+        wrote = progress.wrote_anything
+        tr = fresh(note)
+        if message:
+            tr.add_user(message)
+        progress.reset(turn_now)
+        progress.wrote_anything = wrote
+        segment_start = turn_now
 
     def status(state, **extra):
         USAGE.state = state
@@ -507,15 +675,17 @@ def run(a):
                         own=allowed)
     deadline = time.monotonic() + a.minutes * 60
     segment_start = 1
-    nudge_turn = None  # turn of the last automatic nudge
-    print(f"run {run_dir.name}: model {model}", flush=True)
+    nudge_turn = None     # turn of the last automatic nudge or manager step
+    nudge_gains = 0       # progress.gains at that nudge
+    manager_steps = []    # every step the manager gave in this run
+    print(f"run {run_dir.name}: model {model}, ledger {a.ledger}", flush=True)
     status("running")
 
     while True:
         turn += 1
         out_of_budget = turn > a.turns or time.monotonic() > deadline
         if out_of_budget or turn - segment_start >= a.segment_turns:
-            note = handoff_note(a, model, tr)
+            note = note_for_handoff()
             name = "HANDOFF-final.md" if out_of_budget else f"HANDOFF-{turn}.md"
             (run_dir / name).write_text(note + "\n")
             if out_of_budget:
@@ -523,30 +693,42 @@ def run(a):
                 status("out-of-budget", note=name)
                 return
             print(f"HANDOFF: fresh conversation at turn {turn}; note in {name}", flush=True)
-            tr = fresh(note)
-            progress.reset(turn)
-            segment_start = turn
+            restart(note, None, turn)
 
         hint = take_hint(run_dir)
         reason = None if hint else progress.stuck(turn)
-        if reason and (nudge_turn is None or progress.last_progress > nudge_turn):
-            # First try: restart from Qwen's own note with an order to build, reading switched off.
-            note = handoff_note(a, model, tr)
-            (run_dir / f"NUDGE-{turn}.md").write_text(f"# Automatic nudge: {reason}\n\n{note}\n")
-            print(f"AUTO-NUDGE: {reason} (turn {turn}); fresh conversation, reading locked", flush=True)
-            wrote = progress.wrote_anything
-            tr = fresh(note)
-            tr.add_user(NUDGE_PROMPT.format(reason=reason))
-            progress.reset(turn)
-            progress.wrote_anything = wrote
-            segment_start = turn
-            nudge_turn = turn
-            ws.reads_locked = True
-            status("running", nudged_at=turn)
-            reason = None
+        if reason and (nudge_turn is None or progress.gains > nudge_gains):
+            # First try without a person. Ledger mode: Qwen updates its notes and a tool-less manager
+            # call turns notes + measured facts into one next step. Otherwise: the generic nudge.
+            # Either way the conversation restarts and reading outside the crate is switched off.
+            if ledger:
+                note = update_notes(a, model, tr, notes_path)
+                step = manager_step(a, model, task_text, note,
+                                    measured_facts(reason, ws, progress, current_files(a.variant)),
+                                    manager_steps)
+                if step is None:
+                    reason += "; the manager gave no usable step"
+                elif any(same_step(step, s) for s in manager_steps):
+                    reason += f"; the manager repeated an earlier step: {step[:200]}"
+                else:
+                    manager_steps.append(step)
+                    (run_dir / f"MANAGER-{turn}.md").write_text(f"# Stalled: {reason}\n\n## Step\n\n{step}\n")
+                    print(f"MANAGER: {reason} (turn {turn}); next step: {step[:120]}", flush=True)
+                    restart(note, MANAGER_STEP_PROMPT.format(reason=reason, step=step), turn)
+                    nudge_turn, nudge_gains, reason = turn, progress.gains, None
+            else:
+                note = handoff_note(a, model, tr)
+                (run_dir / f"NUDGE-{turn}.md").write_text(f"# Automatic nudge: {reason}\n\n{note}\n")
+                print(f"AUTO-NUDGE: {reason} (turn {turn}); fresh conversation, reading locked", flush=True)
+                restart(note, NUDGE_PROMPT.format(reason=reason), turn)
+                nudge_turn, nudge_gains, reason = turn, progress.gains, None
+            if reason is None:
+                ws.reads_locked = True
+                status("running", nudged_at=turn)
         if reason:
-            reason += f" (after an automatic nudge at turn {nudge_turn})"
-            note = handoff_note(a, model, tr)
+            if nudge_turn is not None and "manager" not in reason:
+                reason += f" (after an automatic nudge at turn {nudge_turn})"
+            note = note_for_handoff()
             (run_dir / "ESCALATION.md").write_text(
                 f"# Stuck: {reason}\n\nTurn {turn}. Write guidance to `{run_dir / 'hint.md'}` or use the "
                 "dashboard. Write `stop` to end the run.\n\n## Qwen's note\n\n" + note + "\n")
@@ -615,6 +797,13 @@ def run(a):
             if name == "run_gate" and ws.gate_passed:
                 shutil.copytree(BENCH / "pumpkin" / a.variant, run_dir / f"green-{turn}",
                                 ignore=shutil.ignore_patterns("target"))
+        milestone, progress.milestone = progress.milestone, None
+        if ledger and milestone and not ws.gate_passed:
+            # Measurable progress: write it into the notes and continue in a short, fresh context.
+            note = update_notes(a, model, tr, notes_path)
+            (run_dir / f"MILESTONE-{turn}.md").write_text(f"# {milestone}\n\n{note}\n")
+            print(f"MILESTONE: {milestone} (turn {turn}); notes rewritten, fresh conversation", flush=True)
+            restart(note, MILESTONE_PROMPT.format(milestone=milestone), turn)
         status("running", context_chars=sum(len(str(m.get("content", ""))) for m in tr.messages))
 
 
