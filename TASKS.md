@@ -55,12 +55,29 @@ and a link to the commit or result) when it is finished.
 - [ ] Publish to the Pumpkin marketplace, post in #plugin-dev.
 - [ ] Optional: mention it in #plugin-dev first; someone started a Rust vein miner there on 2026-09-29.
 
+### Machine layer (block entities and menus on vanilla blocks, started 2026-10-06)
+- Chosen instead of helping on runtime registries (PR #3887, reviewers want it after 1.0).
+  Feasibility: buildable on v0.1 today, see [docs/machine-feasibility.md](docs/machine-feasibility.md).
+  Scratch plugin `pumpkin/feas-machine`, checks `scripts/feas_machine_headless.py` (21/21) and
+  `scripts/feas_chunk_unload.py` (5/5).
+- [ ] Upstream asks (the user posts them; check for duplicates first): `ChunkLoadEvent` is never
+      fired; `open-gui` returns no window ID and there is no `close-screen`; plugin menus reject
+      clicks on the player's half ("invalid slot index 27"); `plugin unload` leaves permissions
+      registered so a reload fails; forced chunks aren't reloaded after a restart.
+- [ ] Decide the first real machine (crusher on a barrel is the scratch one), then a Qwen task and
+      gate for it, following the chain-mining loop setup.
+- [ ] Not checked: the hand stack after placing a plugin-given machine item in survival (client
+      still showed 4 after placing 1).
+
 ### Later
 - [ ] `native` variant: the workload compiled into the server, to show the floor a bulk API can reach.
 - [ ] Player-facing ModDecoded article ("Would a Rust server make my modpack faster?") once Phoenix
       has responded and the numbers are repeated.
 
 ## Done
+- [x] 2026-10-06: machine-layer feasibility, headless and with a real client driven in the
+      background (menus, progress arrow, right-click to open, placing a machine item, restart
+      survival) ([docs/machine-feasibility.md](docs/machine-feasibility.md)).
 - [x] 2026-10-05: Qwen task and gate for the chain-mining plugin; the loop accepts `--gate` and
       `--first-read`; gate checked end to end against a stub plugin (scene building and probes
       pass, plugin checks fail as expected).

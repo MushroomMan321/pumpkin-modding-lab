@@ -4,7 +4,7 @@
 resolver = "3"
 # Crates written by the Qwen loop live in wasm-* (benchmark variants) and plugin-* (plugins)
 # and are picked up automatically.
-members = ["probe", "bulk", "wasm-*", "plugin-*"]
+members = ["probe", "bulk", "feas-machine", "wasm-*", "plugin-*"]
 
 [workspace.dependencies]
 pumpkin-plugin-api = { path = "../../Pumpkin/crates/pumpkin-plugin-api" }

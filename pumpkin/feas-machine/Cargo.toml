@@ -1,0 +1,13 @@
+[package]
+name = "psb-feas-machine"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+description = "Scratch plugin: can a Pumpkin v0.1 plugin build a machine (block entity data, inventories, ticking, menus)?"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+pumpkin-plugin-api = { workspace = true }
+tracing = "0.1"
