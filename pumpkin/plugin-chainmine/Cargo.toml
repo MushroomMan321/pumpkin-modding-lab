@@ -1,0 +1,13 @@
+[package]
+name = "psb-plugin-chainmine"
+version = "0.1.1"
+edition = "2024"
+description = "chain-mining plugin: sneaking + break = the whole connected vein, 8 blocks per tick"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+pumpkin-plugin-api = { workspace = true }
+tracing = "0.1"
