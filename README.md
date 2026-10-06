@@ -1,4 +1,18 @@
-# pumpkin-server-bench
+# pumpkin-modding-lab
+
+Experiments toward modded play on [Pumpkin](https://github.com/Pumpkin-MC/Pumpkin), the Rust
+Minecraft server with WASM plugins: what plugin work costs, what the plugin API can already do,
+and plugins built on it. Formerly `pumpkin-server-bench`; old links redirect here.
+
+| Part | What | Where |
+|---|---|---|
+| Benchmark | The same mod workload on Pumpkin and NeoForge, and a batched-write prototype for the plugin API | below, [docs/RESULTS.md](docs/RESULTS.md) |
+| Chain-mining plugin | Sneak-to-chain mining for vanilla clients, built by a local Qwen loop and play-tested | [pumpkin/plugin-chainmine](pumpkin/plugin-chainmine), [feasibility](docs/chainmine-feasibility.md) |
+| Machine layer | Block entities, menus and ticking machines on vanilla blocks from a v0.1 plugin, with the API gaps found | [docs/machine-feasibility.md](docs/machine-feasibility.md) |
+
+Task list: [TASKS.md](TASKS.md).
+
+## Benchmark
 
 Does a Minecraft mod run faster as a Pumpkin (Rust) plugin than as a NeoForge (Java) mod,
 once it is doing real server work at scale?
@@ -8,7 +22,7 @@ pass energy to their neighbours and write blocks into the world (see [SPEC.md](S
 Every run is checked against a reference checksum before its timings are kept, so a
 variant can't look fast by doing less work.
 
-## Results
+### Results
 
 10,000 machines, 100 block writes per tick, 2,400 measured ticks after 1,200 warm-up ticks. Every run
 reproduced the reference checksum. Full write-up: [docs/RESULTS.md](docs/RESULTS.md).
@@ -29,7 +43,7 @@ reproduced the reference checksum. Full write-up: [docs/RESULTS.md](docs/RESULTS
   6 µs per write. What remains is about 1.2 ms per tick for calling the plugin at all.
 - Single runs on a DGX Spark (GB10), server pinned to its ten Cortex-X925 cores.
 
-## Variants
+### Variants
 
 | Server | Variant | What it measures | Status |
 |---|---|---|---|
@@ -47,8 +61,9 @@ reproduced the reference checksum. Full write-up: [docs/RESULTS.md](docs/RESULTS
 | `SPEC.md` | The workload contract every variant follows |
 | `workload/` | Rust reference implementation, golden checksums, `checksum` tool |
 | `neoforge/` | NeoForge mod: both Java variants plus the tick probe |
-| `pumpkin/` | Pumpkin WASM plugins: `probe/` (tick timing) and the variants; `patches/bulk-write.py` adds `set-block-states` |
+| `pumpkin/` | Pumpkin WASM plugins: `probe/` (tick timing) and the variants; `patches/bulk-write.py` adds `set-block-states`; `plugin-chainmine/`; `feas-machine/` (machine-layer scratch plugin) |
 | `harness/psb.py` | Runs one configuration through the server console and writes JSON |
+| `scripts/` | Feasibility checks run through the server console (`feas_*.py`) |
 | `qwen/` | The Qwen build loop: task specs, `gate.sh`, `loop.py` |
 | `results/raw/` | One JSON per run |
 
