@@ -1,0 +1,27 @@
+# 26.3 vanilla client log, session 1 (join, then custom blocks placed in view)
+57:[19:57:34] [Render thread/INFO]: Connecting to <server>, 25565
+62:[19:57:36] [Render thread/INFO]: [System] [CHAT] <player> joined the game
+83:[19:58:10] [Render thread/WARN]: Client disconnected with reason: Internal Exception: io.netty.handler.codec.DecoderException: Failed to decode packet 'clientbound/minecraft:block_update'
+
+# session 2 (rejoin with the custom blocks in the spawn chunk)
+[19:58:43] [Render thread/INFO]: Connecting to <server>, 25565
+[19:58:44] [Render thread/ERROR]: Failed to handle packet ClientboundLevelChunkWithLightPacket[x=0, z=0, ...], disconnecting
+java.lang.IllegalArgumentException: No value with id 35724
+	at net.minecraft.core.IdMap.byIdOrThrow(IdMap.java:16)
+	at net.minecraft.world.level.chunk.LinearPalette.read(LinearPalette.java:77)
+	at net.minecraft.world.level.chunk.PalettedContainer.read(PalettedContainer.java:164)
+	at net.minecraft.world.level.chunk.LevelChunkSection.read(LevelChunkSection.java:170)
+	at net.minecraft.world.level.chunk.LevelChunk.replaceWithPacketData(LevelChunk.java:542)
+	at net.minecraft.client.multiplayer.ClientChunkCache.replaceWithPacketData(ClientChunkCache.java:115)
+	at net.minecraft.client.multiplayer.ClientPacketListener.handleLevelChunkWithLight(ClientPacketListener.java:905)
+	at net.minecraft.network.protocol.game.ClientboundLevelChunkWithLightPacket.handle(ClientboundLevelChunkWithLightPacket.java:41)
+	at net.minecraft.network.protocol.game.ClientboundLevelChunkWithLightPacket.handle(ClientboundLevelChunkWithLightPacket.java:15)
+	at net.minecraft.network.PacketProcessor$ListenerAndPacket.handle(PacketProcessor.java:55)
+	at net.minecraft.network.PacketProcessor.processQueuedPackets(PacketProcessor.java:38)
+	at net.minecraft.client.Minecraft.runTick(Minecraft.java:1238)
+	at net.minecraft.client.Minecraft.run(Minecraft.java:967)
+	at net.minecraft.client.main.Main.main(Main.java:292)
+	at org.prismlauncher.launcher.impl.StandardLauncher.launch(StandardLauncher.java:115)
+	at org.prismlauncher.EntryPoint.listen(EntryPoint.java:129)
+	at org.prismlauncher.EntryPoint.main(EntryPoint.java:70)
+[19:58:44] [Render thread/WARN]: Client disconnected with reason: Network Protocol Error

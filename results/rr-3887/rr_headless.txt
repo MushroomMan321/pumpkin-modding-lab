@@ -1,0 +1,31 @@
+=== session one
+INFO vanilla counts  [rrtlog vanilla blocks=1286 states=35723 items=1658]
+PASS register-block returns an id  [rrtlog register crusher -> Ok(1286)]
+PASS the same definition again gives the same id  [rrtlog register crusher again -> Ok(1286)]
+PASS a different definition for a known key fails  [rrtlog register crusher changed -> Err("block 'rrtest:crusher' is already registered with another definition")]
+PASS second block registers
+PASS register-item returns an id  [rrtlog register item -> Ok(1658)]
+PASS set-block-item links item and block  [rrtlog link -> Ok(())]
+PASS register-block-tag (minecraft:climbable)  [rrtlog block tag -> Ok(())]
+INFO registered blocks  [rrtlog block rrtest:crusher id=1286 base_state=35723 states=8 item=Some(1658) | rrtlog block rrtest:stairs id=1287 base_state=35731 states=80 item=None]
+PASS stairs with oak_stairs' properties: all 80 states numbered like vanilla  [rrtlog stairs combos=80 mismatches=0 first_mismatch=None default_offset ours=Some(11) oak=Some(11)]
+INFO vanilla /setblock with a custom block key  [Changed]
+PASS custom block placed and read back by key  [rrtlog get 4 100 4 id=35724 block=1286 name=rrtest:crusher]
+PASS custom block with non-default state placed  [rrtlog get 6 100 4 id=35729 block=1286 name=rrtest:crusher]
+PASS second custom block placed in another chunk  [rrtlog get 36 100 4 id=35772 block=1287 name=rrtest:stairs]
+PASS register-block after startup is refused  [rrtlog late register -> Err("blocks can only be registered before players connect")]
+PASS register-item after startup is refused  [rrtlog late item -> Err("items can only be registered before players connect")]
+INFO preread file for session two  [plugins/data/rrtest/preread]
+=== session two
+INFO plugin read 4 100 4 before registering anything  [rrtlog preread 4 100 4 id=0 block=0 name=air]
+INFO chunk-read-before-registration case NOT exercised  [the early read did not load the chunk and the server printed no 'not registered yet' warning, so chunk (0, 0) below is an ordinary chunk]
+INFO custom block in chunk (0, 0) after startup, in memory [ordinary chunk, case not exercised]  [rrtlog get 4 100 4 id=35724 block=1286 name=rrtest:crusher]
+PASS custom block in chunk (2, 0) survives a restart  [rrtlog get 36 100 4 id=35772 block=1287 name=rrtest:stairs]
+INFO edit in chunk (0, 0) (stone -> gold_block), in memory [ordinary chunk, case not exercised]  [rrtlog get 8 100 4 id=3830 block=217 name=gold_block]
+=== session three
+PASS custom block in chunk (0, 0) after a second restart [ordinary chunk, case not exercised]  [rrtlog get 4 100 4 id=35724 block=1286 name=rrtest:crusher]
+PASS its non-default-state neighbour too [ordinary chunk, case not exercised]  [rrtlog get 6 100 4 id=35729 block=1286 name=rrtest:crusher]
+PASS custom block in chunk (2, 0) after a second restart  [rrtlog get 36 100 4 id=35772 block=1287 name=rrtest:stairs]
+PASS the edit made in chunk (0, 0) in session two was saved [ordinary chunk, case not exercised]  [rrtlog get 8 100 4 id=3830 block=217 name=gold_block]
+
+=== 18 passed, 0 failed, 8 info

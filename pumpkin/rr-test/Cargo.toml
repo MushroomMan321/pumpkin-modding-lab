@@ -1,0 +1,16 @@
+[package]
+name = "rrtest"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wit-bindgen = { version = "0.62", default-features = false, features = ["macros", "realloc", "async"] }
+
+[profile.release]
+opt-level = "s"
+
+# Not part of the pumpkin/ workspace: it binds the v0.2 WIT from the PR branch, not pumpkin-plugin-api.
+[workspace]

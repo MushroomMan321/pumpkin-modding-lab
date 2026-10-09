@@ -1,0 +1,378 @@
+19:56:46  INFO Starting Pumpkin 0.2.0+26.3-26.51 Java Minecraft (Protocol 777) | 1.26.51 Bedrock (Protocol 2193)
+19:56:46  WARN Pumpkin is currently under heavy development!
+19:56:46  INFO Report issues on https://github.com/Pumpkin-MC/Pumpkin/issues
+19:56:46  INFO Join our Discord for community support: https://discord.gg/wT8XjrjKkf
+19:56:46  INFO Consider Donating to https://pumpkinmc.org/donate/
+19:56:46  WARN No level.dat in world, creating a new world with seed 111295
+19:56:46  INFO Enabled dimensions: ["minecraft:overworld", "minecraft:the_nether", "minecraft:the_end"]
+19:56:46  INFO Loading minecraft:overworld
+19:56:46  INFO Loading minecraft:the_nether
+19:56:46  INFO Loading minecraft:the_end
+19:56:46  INFO All worlds loaded successfully.
+19:56:46  INFO Loaded 3 embedded test instance(s)
+19:56:46  INFO Loaded 26 int and 4 float embedded context provider(s)
+19:56:46  WARN Plugin './plugins/rrtest.wasm' is unsigned. Unsigned plugins may come from untrusted sources.
+19:56:47  INFO [plugin] rrtlog vanilla blocks=1286 states=35723 items=1658
+19:56:47  INFO Plugin rrtest registered block rrtest:crusher with id 1286 and 8 states from state id 35723
+19:56:47  INFO [plugin] rrtlog register crusher -> Ok(1286)
+19:56:47  INFO Plugin rrtest registered block rrtest:crusher with id 1286 and 8 states from state id 35723
+19:56:47  INFO [plugin] rrtlog register crusher again -> Ok(1286)
+19:56:47  INFO [plugin] rrtlog register crusher changed -> Err("block 'rrtest:crusher' is already registered with another definition")
+19:56:47  INFO Plugin rrtest registered block rrtest:stairs with id 1287 and 80 states from state id 35731
+19:56:47  INFO [plugin] rrtlog register stairs -> Ok(1287)
+19:56:47  INFO Plugin rrtest registered item rrtest:crusher with id 1658
+19:56:47  INFO [plugin] rrtlog register item -> Ok(1658)
+19:56:47  INFO Plugin rrtest linked item rrtest:crusher to block rrtest:crusher
+19:56:47  INFO [plugin] rrtlog link -> Ok(())
+19:56:47  INFO [plugin] rrtlog block tag -> Ok(())
+19:56:47  INFO [plugin] rrtlog block rrtest:crusher id=1286 base_state=35723 states=8 item=Some(1658)
+19:56:47  INFO [plugin] rrtlog block rrtest:stairs id=1287 base_state=35731 states=80 item=None
+19:56:47  INFO [plugin] rrtlog stairs combos=80 mismatches=0 first_mismatch=None default_offset ours=Some(11) oak=Some(11)
+19:56:47  INFO Loaded rrtest (0.1.0)
+19:56:47  WARN Plugin "rrtest" uses the following permissions: ["registry.blocks", "registry.items", "fs.read.data"]
+19:56:47  INFO Started server; took 1300ms
+19:56:47  INFO Server is now running. Connect using port: Java Edition: 0.0.0.0:25565
+
+$ 
+19:57:34  INFO <player> joined the game
+
+$ gamemode
+
+$ gamemode
+
+$ gamemode
+
+$ gamemode
+
+$ gamemode
+
+$ gamemode
+
+$ gamemode
+
+$ gamemode
+ 
+$ gamemode creative
+
+$ gamemode creative
+
+$ gamemode creative
+
+$ gamemode creative
+
+$ gamemode creative
+
+$ gamemode creative
+
+$ gamemode creative
+
+$ gamemode creative
+ 
+$ gamemode creative <player>
+
+$ gamemode creative <player>
+
+$ gamemode creative <player>
+
+$ gamemode creative <player>
+
+$ gamemode creative <player>
+
+$ gamemode creative <player>
+
+$ gamemode creative <player>
+
+$ gamemode creative <player>
+
+$ gamemode creative <player>
+
+$ gamemode creative <player>
+
+$ gamemode creative <player>
+
+$ gamemode creative <player>
+
+$ gamemode creative <player>
+
+$ gamemode creative <player>
+
+Set <player>'s game mode to Creative Mode
+
+$ 
+
+$ save-all
+
+$ seed
+
+$ setblock
+
+$ setblock
+
+$ setblock
+
+$ setblock
+
+$ setblock
+
+$ setblock
+ 
+$ setblock 0 ~
+
+$ setblock 0   ~
+
+$ setblock 0 1
+00 0 minecraft:stone
+Changed the block at 0, 100, 0
+
+$ 
+
+$ save-all
+
+$ seed
+
+$ setblock
+
+$ setblock
+
+$ setblock
+
+$ setblock
+
+$ setblock
+
+$ setblock
+ 
+$ setblock 1 ~
+
+$ setblock 1   ~
+
+$ setblock 1 1 1 ~
+
+$ setblock 1 10
+0 0 minecraft:stone
+Changed the block at 1, 100, 0
+
+$ 
+
+$ save-all
+
+$ seed
+
+$ setblock
+
+$ setblock
+
+$ setblock
+
+$ setblock
+
+$ setblock
+
+$ setblock
+ 
+$ setblock 2 ~
+
+$ setblock 2   ~
+
+$ setblock 2 1
+00 0 minecraft:stone
+Changed the block at 2, 100, 0
+
+$ 
+
+$ save-all
+
+$ seed
+
+$ setblock
+
+$ setblock
+
+$ setblock
+
+$ setblock
+
+$ setblock
+
+$ setblock
+ 
+$ setblock 2 ~
+
+$ setblock 2   ~
+
+$ setblock 2 1
+00 1 minecraft:stone
+Changed the block at 2, 100, 1
+
+$ 
+
+$ save-all
+
+$ seed
+
+$ setblock
+
+$ setblock
+
+$ setblock
+
+$ setblock
+
+$ setblock
+
+$ setblock
+ 
+$ setblock 2 ~
+
+$ setblock 2   ~
+
+$ setblock 2 1
+00 -1 minecraft:stone
+Changed the block at 2, 100, -1
+
+$ 
+
+$ tag
+
+$ tps
+
+$ tp 
+
+$ tp <player>
+
+$ tp <player>
+
+$ tp <player>
+
+$ tp <player>
+
+$ tp <player>
+
+$ tp <player>
+
+$ tp <player>
+
+$ tp <player>
+
+$ tp <player>
+
+$ tp <player>
+
+$ tp <player>
+
+$ tp <player>
+
+$ tp <player>
+
+$ tp <player>
+ 
+$ tp <player> 0 ~
+
+$ tp <player> 0 
+101 0 -90 25
+Teleported <player> to 0.5, 101, 0.5
+
+$ 
+
+$ save-all
+
+$ seed
+
+$ setblock
+
+$ setblock
+
+$ setblock
+
+$ setblock
+
+$ setblock
+
+$ setblock
+ 
+$ setblock 2 ~
+
+$ setblock 2   ~
+
+$ setblock 2 1
+01 0 rrtest:crusher
+Changed the block at 2, 101, 0
+
+$ 
+19:58:08  INFO <player> left the game
+
+$ raid
+
+$ rrt
+
+$ rrt
+ set 2 101 1 rrtest:stairs facing=west
+19:58:09  INFO [plugin] rrtlog set 2 101 1 rrtest:stairs state=35782
+
+$ 
+
+$ save-all
+
+$ seed
+
+$ setblock
+
+$ setblock
+
+$ setblock
+
+$ setblock
+
+$ setblock
+
+$ setblock
+ 
+$ setblock 2 ~
+
+$ setblock 2   ~
+
+$ setblock 2 1
+01 -1 minecraft:furnace
+That position is not loaded
+
+$ 
+19:58:42  INFO <player> joined the game
+19:58:42  INFO <player> left the game
+
+$ save-all
+
+$ stop
+
+$ stop
+
+$ stopsound
+
+$ stop
+
+Stopping the server
+20:00:36  INFO Stopped accepting incoming connections
+20:00:36  INFO Ending player tasks
+20:00:36  INFO All plugins unloaded successfully
+20:00:36  INFO Starting save.
+20:00:36  INFO Starting worlds
+20:00:36  INFO Saving level (world)...
+20:00:36  INFO Joining 1 threads for world...
+20:00:36  INFO Saving chunks before shutdown...
+20:00:36  INFO schedule: waiting for 0 generation tasks to finish
+20:00:36  INFO Flushing chunk data to disk for world...
+20:00:36  INFO Flushing entity data to disk for world...
+20:00:36  INFO Saving level (world)...
+20:00:36  INFO Joining 1 threads for world...
+20:00:36  INFO Saving chunks before shutdown...
+20:00:36  INFO schedule: waiting for 0 generation tasks to finish
+20:00:36  INFO Flushing chunk data to disk for world...
+20:00:36  INFO Flushing entity data to disk for world...
+20:00:36  INFO Saving level (world)...
+20:00:36  INFO Joining 1 threads for world...
+20:00:36  INFO Saving chunks before shutdown...
+20:00:36  INFO schedule: waiting for 0 generation tasks to finish
+20:00:36  INFO Flushing chunk data to disk for world...
+20:00:36  INFO Flushing entity data to disk for world...
+20:00:36  INFO Completed worlds
+20:00:36  INFO Completed save!
+20:00:36  INFO The server has stopped.
